@@ -260,6 +260,24 @@
   .present-stage:fullscreen .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
   .present-stage:fullscreen .gabarito-table { font-size: 1.6rem; }
 
+  .present-fs-nav { display: none; }
+  .present-stage:fullscreen .present-fs-nav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 4vh;
+    justify-content: center;
+    gap: 18px;
+    z-index: 5;
+  }
+  .present-fs-nav button {
+    padding: 12px 26px;
+    font-size: 1.1rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+    font-family: var(--font);
+    font-weight: 300;
+  }
+
   .gabarito-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
   .gabarito-table th, .gabarito-table td {
     text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 300;
@@ -416,7 +434,13 @@
       <div id="present-empty" class="empty-note">Cadastre ao menos uma questão para iniciar a apresentação.</div>
 
       <div id="present-body" style="display:none;">
-        <div class="present-stage" id="present-stage"></div>
+        <div class="present-stage" id="present-stage">
+          <div id="present-stage-content"></div>
+          <div class="present-fs-nav">
+            <button class="btn-ghost" id="btn-prev-fs">← Anterior</button>
+            <button class="btn-primary" id="btn-next-fs">Próxima →</button>
+          </div>
+        </div>
         <div class="present-nav">
           <button class="btn-ghost" id="btn-prev">← Anterior</button>
           <button class="btn-ghost" id="btn-restart">Reiniciar</button>
@@ -779,6 +803,12 @@ document.getElementById('btn-prev').addEventListener('click', () => {
 document.getElementById('btn-restart').addEventListener('click', () => {
   presentIndex = 0; gabaritoRevealed = false; renderPresent();
 });
+document.getElementById('btn-next-fs').addEventListener('click', () => {
+  document.getElementById('btn-next').click();
+});
+document.getElementById('btn-prev-fs').addEventListener('click', () => {
+  document.getElementById('btn-prev').click();
+});
 
 function renderPresent() {
   const test = getCurrentTest();
@@ -790,7 +820,7 @@ function renderPresent() {
   empty.style.display = 'none'; body.style.display = 'block';
   if (presentIndex > test.questions.length - 1) presentIndex = 0;
 
-  const stage = document.getElementById('present-stage');
+  const stage = document.getElementById('present-stage-content');
 
   if (gabaritoRevealed) {
     stage.innerHTML = `
@@ -802,9 +832,12 @@ function renderPresent() {
     `;
     document.getElementById('btn-next').textContent = 'Próxima →';
     document.getElementById('btn-next').disabled = true;
+    document.getElementById('btn-next-fs').textContent = 'Próxima →';
+    document.getElementById('btn-next-fs').disabled = true;
     return;
   }
   document.getElementById('btn-next').disabled = false;
+  document.getElementById('btn-next-fs').disabled = false;
 
   const q = test.questions[presentIndex];
   const isLast = presentIndex === test.questions.length - 1;
@@ -821,6 +854,7 @@ function renderPresent() {
     </div>
   `;
   document.getElementById('btn-next').textContent = isLast ? 'Ver gabarito →' : 'Próxima →';
+  document.getElementById('btn-next-fs').textContent = isLast ? 'Ver gabarito →' : 'Próxima →';
   typeset(stage);
 }
 
