@@ -246,28 +246,50 @@
   }
   .present-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 26px; gap: 10px; flex-wrap: wrap; }
 
-  .present-stage:fullscreen {
+  .present-stage.stage-immersive {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
     background: var(--bg);
     border: none;
     border-radius: 0;
     padding: 6vh 8vw;
     display: flex;
+    flex-direction: column;
     justify-content: center;
+    overflow-y: auto;
   }
-  .present-stage:fullscreen .present-counter { font-size: 1.6rem; }
-  .present-stage:fullscreen .present-question { font-size: 4.2vw; line-height: 1.4; }
-  .present-stage:fullscreen .present-alt { font-size: 2.8vw; }
-  .present-stage:fullscreen .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
-  .present-stage:fullscreen .gabarito-table { font-size: 1.6rem; }
+  body.stage-immersive-lock { overflow: hidden; }
+  .present-stage.stage-immersive .present-counter { font-size: 1.6rem; }
+  .present-stage.stage-immersive .present-question { font-size: 4.2vw; line-height: 1.4; }
+  .present-stage.stage-immersive .present-alt { font-size: 2.8vw; }
+  .present-stage.stage-immersive .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
+  .present-stage.stage-immersive .gabarito-table { font-size: 1.6rem; }
 
-  .present-fs-nav { display: none; }
-  .present-stage:fullscreen .present-fs-nav {
+  .present-exit-fs { display: none; }
+  .present-stage.stage-immersive .present-exit-fs {
     display: flex;
     position: fixed;
-    left: 0; right: 0; bottom: 4vh;
+    top: max(3vh, 14px); right: max(3vw, 14px);
+    width: 46px; height: 46px;
+    align-items: center; justify-content: center;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    font-size: 1.3rem;
+    z-index: 210;
+    cursor: pointer;
+  }
+
+  .present-fs-nav { display: none; }
+  .present-stage.stage-immersive .present-fs-nav {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: max(4vh, 16px);
     justify-content: center;
     gap: 18px;
-    z-index: 5;
+    z-index: 205;
   }
   .present-fs-nav button {
     padding: 12px 26px;
@@ -276,6 +298,13 @@
     cursor: pointer;
     font-family: var(--font);
     font-weight: 300;
+  }
+
+  @media (max-width: 900px) {
+    .present-stage.stage-immersive { padding: 4vh 6vw 14vh; }
+    .present-stage.stage-immersive .present-question { font-size: 6vw; }
+    .present-stage.stage-immersive .present-alt { font-size: 4vw; }
+    .present-fs-nav button { padding: 14px 20px; font-size: 1rem; min-height: 50px; }
   }
 
   .gabarito-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
@@ -435,6 +464,7 @@
 
       <div id="present-body" style="display:none;">
         <div class="present-stage" id="present-stage">
+          <button class="present-exit-fs" id="btn-exit-fs" aria-label="Sair da tela cheia">✕</button>
           <div id="present-stage-content"></div>
           <div class="present-fs-nav">
             <button class="btn-ghost" id="btn-prev-fs">← Anterior</button>
@@ -649,13 +679,43 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+function enterImmersive() {
+  const stage = document.getElementById('present-stage');
+  stage.classList.add('stage-immersive');
+  document.body.classList.add('stage-immersive-lock');
+  // melhor esforço: tenta também a Fullscreen API nativa para esconder a barra do navegador
+  const requestFS = stage.requestFullscreen || stage.webkitRequestFullscreen;
+  if (requestFS && !document.fullscreenElement && !document.webkitFullscreenElement) {
+    requestFS.call(stage).catch(() => {});
+  }
+}
+
+function exitImmersive() {
+  const stage = document.getElementById('present-stage');
+  stage.classList.remove('stage-immersive');
+  document.body.classList.remove('stage-immersive-lock');
+  const exitFS = document.exitFullscreen || document.webkitExitFullscreen;
+  if ((document.fullscreenElement || document.webkitFullscreenElement) && exitFS) {
+    exitFS.call(document).catch(() => {});
+  }
+}
+
 document.getElementById('btn-fullscreen').addEventListener('click', () => {
   const stage = document.getElementById('present-stage');
-  if (!document.fullscreenElement) {
-    stage.requestFullscreen().catch(() => {});
-  } else {
-    document.exitFullscreen();
-  }
+  if (stage.classList.contains('stage-immersive')) exitImmersive();
+  else enterImmersive();
+});
+document.getElementById('btn-exit-fs').addEventListener('click', exitImmersive);
+
+// se o usuário sair do fullscreen nativo (Esc, gesto do tablet), sincroniza o modo imersivo
+['fullscreenchange', 'webkitfullscreenchange'].forEach(evt => {
+  document.addEventListener(evt, () => {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+      const stage = document.getElementById('present-stage');
+      stage.classList.remove('stage-immersive');
+      document.body.classList.remove('stage-immersive-lock');
+    }
+  });
 });
 
 /* ---------- editor de questões ---------- */
