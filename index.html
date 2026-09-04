@@ -501,7 +501,7 @@
         </div>
         <div class="field">
           <label>Nº de alternativas por questão</label>
-          <input type="number" id="sheet-altcount" value="4" min="2" max="6">
+          <input type="number" id="sheet-altcount" value="5" min="2" max="6">
         </div>
       </div>
 
@@ -719,7 +719,7 @@ document.getElementById('btn-exit-fs').addEventListener('click', exitImmersive);
 });
 
 /* ---------- editor de questões ---------- */
-const altLetters = ['A', 'B', 'C', 'D'];
+const altLetters = ['A', 'B', 'C', 'D', 'E'];
 
 function buildAltRows(existing) {
   const wrap = document.getElementById('alt-rows');
@@ -930,8 +930,9 @@ function buildSheet() {
   const title = document.getElementById('sheet-title').value || test.name;
   const meta = document.getElementById('sheet-meta').value || '';
   const copies = Math.max(1, parseInt(document.getElementById('sheet-copies').value) || 1);
-  const altCount = Math.min(6, Math.max(2, parseInt(document.getElementById('sheet-altcount').value) || 4));
-  const letters = altLetters.concat(['E', 'F']).slice(0, altCount);
+  const altCount = Math.min(6, Math.max(2, parseInt(document.getElementById('sheet-altcount').value) || 5));
+  const allSheetLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
+  const letters = allSheetLetters.slice(0, altCount);
 
   const sheetHtml = buildSheetsHtml(test, title, meta, copies, letters);
   document.getElementById('sheet-preview').innerHTML = sheetHtml;
