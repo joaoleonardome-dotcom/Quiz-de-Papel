@@ -1,10 +1,8 @@
-// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
+// Configuração do Firebase para o app "Quiz de Papel — Matemática"
+// Este arquivo só precisa exportar o objeto de configuração.
+// O index.html já cuida de importar o SDK e chamar initializeApp().
 
-// Your web app's Firebase configuration
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyCTei_7-hX0bzeVJRED_GjS_riG0DBHFnM",
   authDomain: "quiz-de-papel.firebaseapp.com",
   projectId: "quiz-de-papel",
@@ -12,6 +10,3 @@ const firebaseConfig = {
   messagingSenderId: "201711370933",
   appId: "1:201711370933:web:0aafed52be26dc60ef74fc"
 };
-
-// Initialize Firebase
-const app = initializeApp(firebaseConfig);
