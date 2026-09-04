@@ -1,0 +1,900 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Quiz de Papel — Matemática</title>
+
+<!-- PWA -->
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#21302A">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Quiz de Papel">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="icon" href="icons/icon-192.png">
+
+<script>
+  window.MathJax = {
+    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+    svg: { fontCache: 'global' }
+  };
+</script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/3.2.2/es5/tex-svg.js" id="mathjax-script" async></script>
+<style>
+  :root{
+    --bg: #21302A;
+    --surface: #2A3B33;
+    --surface-2: #33473D;
+    --line: #46594E;
+    --chalk: #F4F1E6;
+    --chalk-dim: #C9CFC5;
+    --yellow: #E3BA53;
+    --blue: #6FA3B0;
+    --wrong: #C1694A;
+    --radius: 3px;
+    --font: 'Arial Light', 'Helvetica Neue', Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+  html, body { overscroll-behavior-y: none; }
+
+  body {
+    margin: 0;
+    font-family: var(--font);
+    font-weight: 300;
+    background: var(--bg);
+    color: var(--chalk);
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  .ui { font-family: var(--font); font-weight: 300; }
+
+  /* layout */
+  .app { display: flex; min-height: 100vh; min-height: 100dvh; }
+
+  .menu-toggle {
+    display: none;
+    position: fixed;
+    top: 14px; left: 14px;
+    z-index: 60;
+    width: 44px; height: 44px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    color: var(--chalk);
+    font-size: 1.3rem;
+    align-items: center; justify-content: center;
+  }
+
+  .overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.45);
+    z-index: 40;
+  }
+  .overlay.show { display: block; }
+
+  nav.side {
+    width: 270px;
+    flex-shrink: 0;
+    background: var(--surface);
+    border-right: 1px solid var(--line);
+    padding: 28px 0;
+    overflow-y: auto;
+  }
+
+  nav.side .brand {
+    font-size: 1.2rem;
+    font-weight: 400;
+    padding: 0 22px 22px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 18px;
+    line-height: 1.3;
+  }
+  nav.side .brand em { font-style: normal; color: var(--yellow); }
+
+  .sync-status { padding: 0 22px 16px; font-size: 0.72rem; color: var(--chalk-dim); display: flex; align-items: center; gap: 6px; }
+  .sync-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--chalk-dim); flex-shrink: 0; }
+  .sync-status.online .sync-dot { background: var(--yellow); }
+  .sync-status.error .sync-dot { background: var(--wrong); }
+
+  .test-picker { padding: 0 22px 20px; border-bottom: 1px solid var(--line); margin-bottom: 8px; }
+  .test-picker label { display: block; font-size: 0.72rem; color: var(--chalk-dim); margin-bottom: 6px; letter-spacing: 0.02em; }
+  .test-picker select {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line); color: var(--chalk);
+    padding: 11px 10px; border-radius: var(--radius); font-family: var(--font); font-weight: 300; font-size: 0.9rem;
+    margin-bottom: 8px;
+  }
+  .test-picker-actions { display: flex; gap: 6px; }
+  .test-picker-actions button {
+    flex: 1; font-size: 0.72rem; padding: 9px 4px; background: none; border: 1px solid var(--line);
+    color: var(--chalk-dim); border-radius: var(--radius);
+  }
+  .test-picker-actions button:hover { color: var(--chalk); border-color: var(--chalk-dim); }
+
+  .tab-btn {
+    display: block;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    color: var(--chalk-dim);
+    padding: 15px 22px;
+    font-size: 0.95rem;
+    font-weight: 300;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+    font-family: var(--font);
+  }
+  .tab-btn:hover { color: var(--chalk); background: var(--surface-2); }
+  .tab-btn.active { color: var(--chalk); border-left-color: var(--yellow); background: var(--surface-2); }
+
+  main { flex: 1; padding: 40px 48px; max-width: 900px; min-width: 0; }
+  main.wide { max-width: 1240px; }
+
+  h1.page-title { font-weight: 400; font-size: 1.6rem; margin: 0 0 2px; }
+  .page-test-tag { font-size: 0.8rem; color: var(--yellow); margin: 0 0 28px; }
+  p.page-sub { color: var(--chalk-dim); margin: 0 0 28px; font-weight: 300; }
+  p.page-sub code { background: var(--surface-2); padding: 1px 5px; border-radius: 2px; font-family: monospace; }
+
+  .view { display: none; }
+  .view.active { display: block; }
+
+  .setup-notice {
+    max-width: 640px; margin: 60px auto; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 6px; padding: 34px 38px;
+  }
+  .setup-notice h1 { font-weight: 400; font-size: 1.4rem; margin-top: 0; }
+  .setup-notice ol { padding-left: 20px; line-height: 1.9; }
+  .setup-notice code { background: var(--surface-2); padding: 1px 6px; border-radius: 2px; font-family: monospace; font-size: 0.9em; }
+
+  /* form elements */
+  label { display: block; font-size: 0.82rem; color: var(--chalk-dim); margin-bottom: 6px; font-weight: 300; }
+
+  input[type=text], input[type=number], textarea {
+    width: 100%;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    color: var(--chalk);
+    padding: 12px 12px;
+    border-radius: var(--radius);
+    font-family: var(--font);
+    font-weight: 300;
+    font-size: 1rem;
+  }
+  textarea { resize: vertical; min-height: 64px; }
+  input:focus, textarea:focus { outline: none; border-color: var(--yellow); }
+
+  .field { margin-bottom: 16px; }
+
+  button {
+    font-family: var(--font);
+    font-weight: 300;
+    cursor: pointer;
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    padding: 12px 18px;
+    font-size: 0.9rem;
+    min-height: 44px;
+  }
+  .btn-primary { background: var(--yellow); color: #21302A; font-weight: 500; border: none; }
+  .btn-primary:hover { background: #eecb75; }
+  .btn-ghost { background: none; border: 1px solid var(--line); color: var(--chalk); }
+  .btn-ghost:hover { border-color: var(--chalk-dim); }
+  .btn-danger { background: none; border: 1px solid var(--wrong); color: var(--wrong); }
+  .btn-danger:hover { background: rgba(193,105,74,0.12); }
+  .btn-row { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+
+  /* question editor */
+  .alt-row { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .alt-letter {
+    width: 34px; height: 34px; border-radius: 50%;
+    border: 1px solid var(--line); display: flex; align-items: center; justify-content: center;
+    font-size: 0.85rem; flex-shrink: 0; cursor: pointer;
+    color: var(--chalk-dim);
+  }
+  .alt-row input[type=radio] { display: none; }
+  .alt-row input[type=radio]:checked + .alt-letter { background: var(--yellow); border-color: var(--yellow); color: #21302A; font-weight: 500; }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 22px 24px;
+    margin-bottom: 20px;
+  }
+
+  .q-list-item {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--blue);
+    border-radius: var(--radius);
+    padding: 14px 18px;
+    margin-bottom: 12px;
+  }
+  .q-list-item .q-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .q-list-item .q-num { color: var(--chalk-dim); font-size: 0.78rem; }
+  .q-list-item .q-text { margin: 6px 0 8px; }
+  .q-list-item .q-alts { font-size: 0.9rem; color: var(--chalk-dim); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
+  .q-list-item .q-alts .correct { color: var(--yellow); }
+  .q-actions button { font-size: 0.78rem; padding: 8px 12px; margin-left: 6px; min-height: 38px; }
+  .empty-note { color: var(--chalk-dim); padding: 20px 0; font-weight: 300; }
+
+  /* apresentação */
+  .present-stage {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 80px 72px;
+    min-height: 560px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .present-counter { color: var(--chalk-dim); font-size: 1.1rem; margin-bottom: 26px; }
+  .present-question { font-size: 2.6rem; line-height: 1.45; margin-bottom: 46px; font-weight: 400; }
+  .present-alts { display: grid; gap: 22px; }
+  .present-alt { display: flex; gap: 22px; align-items: flex-start; font-size: 1.9rem; font-weight: 300; }
+  .present-alt .letter-badge {
+    width: 54px; height: 54px; border-radius: 50%; border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    color: var(--blue); font-size: 1.4rem;
+  }
+  .present-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 26px; gap: 10px; flex-wrap: wrap; }
+
+  .present-stage:fullscreen {
+    background: var(--bg);
+    border: none;
+    border-radius: 0;
+    padding: 6vh 8vw;
+    display: flex;
+    justify-content: center;
+  }
+  .present-stage:fullscreen .present-counter { font-size: 1.6rem; }
+  .present-stage:fullscreen .present-question { font-size: 4.2vw; line-height: 1.4; }
+  .present-stage:fullscreen .present-alt { font-size: 2.8vw; }
+  .present-stage:fullscreen .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
+  .present-stage:fullscreen .gabarito-table { font-size: 1.6rem; }
+
+  .gabarito-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+  .gabarito-table th, .gabarito-table td {
+    text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 300;
+  }
+  .gabarito-table th { color: var(--chalk-dim); font-size: 0.8rem; font-weight: 400; }
+  .gabarito-table td.letter { color: var(--yellow); font-weight: 500; font-size: 1.05rem; }
+
+  /* folha de respostas / print */
+  .sheet-settings { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+
+  #print-area { display: none; }
+
+  .sheet {
+    background: #fff;
+    color: #111;
+    width: 100%;
+    display: flex;
+    font-family: Arial, Helvetica, sans-serif;
+    font-weight: 300;
+  }
+  .sheet + .sheet { page-break-before: always; }
+  .mini-sheet {
+    flex: 1 1 0;
+    min-width: 0;
+    padding: 18px 14px;
+    border-right: 1px dashed #999;
+  }
+  .mini-sheet:last-child { border-right: none; }
+  .mini-sheet-header { border-bottom: 2px solid #111; padding-bottom: 8px; margin-bottom: 12px; }
+  .mini-sheet-header h2 { margin: 0; font-size: 0.82rem; font-weight: 400; line-height: 1.3; }
+  .mini-sheet-header .meta { font-size: 0.62rem; color: #555; margin-top: 3px; }
+  .mini-idline { margin-bottom: 10px; font-size: 0.68rem; }
+  .mini-idline label { display: block; margin-bottom: 2px; color: #333; }
+  .mini-idline span { display: block; border-bottom: 1px solid #111; height: 14px; }
+  .mini-q-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; border-bottom: 1px dotted #bbb; padding: 5px 0; }
+  .mini-q-row .qn { width: 15px; color: #333; flex-shrink: 0; }
+  .mini-bubbles { display: flex; gap: 5px; flex-wrap: wrap; }
+  .mini-bubble { width: 15px; height: 15px; border-radius: 50%; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; flex-shrink: 0; }
+
+  .preview-frame {
+    background: #444; padding: 24px; border-radius: var(--radius); overflow: auto;
+  }
+
+  @media print {
+    body * { visibility: hidden; }
+    #print-area, #print-area * { visibility: visible; }
+    #print-area { display: block; position: absolute; top: 0; left: 0; width: 100%; }
+    @page { margin: 14mm; }
+  }
+
+  ::selection { background: var(--yellow); color: #21302A; }
+
+  /* ---------- tablet / mobile ---------- */
+  @media (max-width: 900px) {
+    .menu-toggle { display: flex; }
+
+    nav.side {
+      position: fixed;
+      top: 0; bottom: 0; left: 0;
+      transform: translateX(-100%);
+      transition: transform 0.25s ease;
+      z-index: 50;
+      box-shadow: 6px 0 30px rgba(0,0,0,0.4);
+    }
+    nav.side.open { transform: translateX(0); }
+
+    main { padding: 84px 20px 40px; max-width: 100%; }
+    main.wide { max-width: 100%; }
+
+    .sheet-settings { grid-template-columns: 1fr 1fr; }
+
+    .present-stage { padding: 34px 22px; min-height: 320px; }
+    .present-question { font-size: 1.7rem; margin-bottom: 30px; }
+    .present-alt { font-size: 1.2rem; gap: 14px; }
+    .present-alt .letter-badge { width: 40px; height: 40px; font-size: 1rem; }
+    .present-nav { justify-content: center; }
+    .present-nav button { flex: 1 1 40%; }
+
+    .q-list-item .q-alts { grid-template-columns: 1fr; }
+
+    button { min-height: 46px; }
+  }
+
+  @media (max-width: 520px) {
+    .sheet-settings { grid-template-columns: 1fr 1fr; }
+    main { padding: 78px 14px 32px; }
+    .present-question { font-size: 1.4rem; }
+    .present-alt { font-size: 1.05rem; }
+  }
+</style>
+</head>
+<body>
+
+<button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">☰</button>
+<div class="overlay" id="overlay"></div>
+
+<div id="app-root" style="display:none;">
+<div class="app">
+  <nav class="side" id="side-nav">
+    <div class="brand">Quiz de <em>Papel</em></div>
+    <div class="sync-status" id="sync-status"><span class="sync-dot"></span><span id="sync-text">Conectando ao Firebase…</span></div>
+
+    <div class="test-picker">
+      <label>Teste / conteúdo</label>
+      <select id="test-select"></select>
+      <div class="test-picker-actions">
+        <button id="btn-new-test" title="Novo teste">+ Novo</button>
+        <button id="btn-rename-test" title="Renomear">Renomear</button>
+        <button id="btn-delete-test" title="Excluir">Excluir</button>
+      </div>
+    </div>
+
+    <button class="tab-btn active" data-tab="questoes">Questões</button>
+    <button class="tab-btn" data-tab="apresentacao">Apresentação</button>
+    <button class="tab-btn" data-tab="folha">Folha de respostas</button>
+  </nav>
+
+  <main>
+
+    <!-- QUESTÕES -->
+    <div class="view active" id="view-questoes">
+      <h1 class="page-title">Questões</h1>
+      <p class="page-test-tag" id="tag-questoes"></p>
+      <p class="page-sub">Fórmulas com comandos LaTeX (ex: <code>\frac{1}{2}</code>, <code>\sqrt{9}</code>, <code>x^2</code>) são renderizadas automaticamente. Para misturar texto com fórmula na mesma frase, delimite a parte matemática com $...$ — ex: "Calcule $x$ em $2x+5=15$".</p>
+
+      <div class="card">
+        <div class="field">
+          <label>Enunciado</label>
+          <textarea id="q-text" placeholder="Digite a questão. Ex: Qual o valor de x em 2x + 5 = 15?"></textarea>
+        </div>
+        <div id="q-preview" class="field" style="min-height:1.4em;"></div>
+
+        <label>Alternativas (marque a correta)</label>
+        <div id="alt-rows"></div>
+
+        <div class="btn-row">
+          <button class="btn-primary" id="btn-save-q">Adicionar questão</button>
+          <button class="btn-ghost" id="btn-cancel-edit" style="display:none;">Cancelar edição</button>
+        </div>
+      </div>
+
+      <h2 style="font-size:0.95rem; font-weight:400; color: var(--chalk-dim); margin: 28px 0 12px;">
+        <span id="q-count">0</span> questão(ões) cadastrada(s) neste teste
+      </h2>
+      <div id="q-list"></div>
+    </div>
+
+    <!-- APRESENTAÇÃO -->
+    <div class="view" id="view-apresentacao">
+      <h1 class="page-title">Apresentação</h1>
+      <p class="page-test-tag" id="tag-apresentacao"></p>
+      <p class="page-sub">Projete esta tela. Navegue pelas questões e revele o gabarito no final.</p>
+
+      <div id="present-empty" class="empty-note">Cadastre ao menos uma questão para iniciar a apresentação.</div>
+
+      <div id="present-body" style="display:none;">
+        <div class="present-stage" id="present-stage"></div>
+        <div class="present-nav">
+          <button class="btn-ghost" id="btn-prev">← Anterior</button>
+          <button class="btn-ghost" id="btn-restart">Reiniciar</button>
+          <button class="btn-ghost" id="btn-fullscreen">⛶ Tela cheia</button>
+          <button class="btn-primary" id="btn-next">Próxima →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- FOLHA DE RESPOSTAS -->
+    <div class="view" id="view-folha">
+      <h1 class="page-title">Folha de respostas</h1>
+      <p class="page-test-tag" id="tag-folha"></p>
+      <p class="page-sub">Gere folhas prontas para impressão — 4 por página, para recortar e entregar a 4 alunos de uma vez.</p>
+
+      <div class="sheet-settings">
+        <div class="field">
+          <label>Título da avaliação</label>
+          <input type="text" id="sheet-title" value="Avaliação de Matemática">
+        </div>
+        <div class="field">
+          <label>Turma / Data</label>
+          <input type="text" id="sheet-meta" placeholder="Ex: 9º Ano B — 03/09/2026">
+        </div>
+        <div class="field">
+          <label>Quantidade de folhas (alunos)</label>
+          <input type="number" id="sheet-copies" value="4" min="1" max="120">
+        </div>
+        <div class="field">
+          <label>Nº de alternativas por questão</label>
+          <input type="number" id="sheet-altcount" value="4" min="2" max="6">
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:0; margin-bottom:22px;">
+        <button class="btn-primary" id="btn-build-sheet">Gerar pré-visualização</button>
+        <button class="btn-ghost" id="btn-print-sheet">Imprimir / Salvar PDF</button>
+      </div>
+
+      <div class="preview-frame">
+        <div id="sheet-preview"></div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</div>
+
+<div id="setup-root" style="display:none;">
+  <div class="setup-notice">
+    <h1>Falta configurar o Firebase</h1>
+    <p class="page-sub" style="margin-bottom:14px;">O app está pronto, mas o arquivo <code>firebase-config.js</code> ainda tem as chaves de exemplo. Para ativar o armazenamento na nuvem:</p>
+    <ol>
+      <li>Crie um projeto em <code>console.firebase.google.com</code>.</li>
+      <li>Ative o <strong>Firestore Database</strong> (modo produção ou teste).</li>
+      <li>Em "Configurações do projeto → Seus apps", crie um app da Web e copie o objeto <code>firebaseConfig</code>.</li>
+      <li>Cole esses valores em <code>firebase-config.js</code>, substituindo os campos de exemplo.</li>
+      <li>Recarregue esta página.</li>
+    </ol>
+    <p class="page-sub" style="margin-top:14px;">Detalhes completos no <code>README.md</code> do projeto.</p>
+  </div>
+</div>
+
+<div id="print-area"></div>
+
+<script type="module">
+import { firebaseConfig } from './firebase-config.js';
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
+import {
+  getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp
+} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+
+/* ---------- checagem de configuração ---------- */
+const isPlaceholder = !firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('SUA_API_KEY');
+if (isPlaceholder) {
+  document.getElementById('setup-root').style.display = 'block';
+} else {
+  document.getElementById('app-root').style.display = 'block';
+  startApp();
+}
+
+function startApp() {
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const testsCol = collection(db, 'tests');
+
+let tests = [];
+let currentTestId = localStorage.getItem('mathquiz_current_test');
+let editingId = null;
+let presentIndex = 0;
+let gabaritoRevealed = false;
+let firstLoad = true;
+
+function setSyncStatus(state, text) {
+  const el = document.getElementById('sync-status');
+  el.className = 'sync-status ' + state;
+  document.getElementById('sync-text').textContent = text;
+}
+
+onSnapshot(testsCol, async (snapshot) => {
+  tests = snapshot.docs.map(d => ({ id: d.id, name: d.data().name || 'Sem nome', questions: d.data().questions || [] }));
+
+  if (tests.length === 0 && firstLoad) {
+    firstLoad = false;
+    await addDoc(testsCol, { name: 'Teste 1', questions: [], createdAt: serverTimestamp() });
+    return; // o próprio onSnapshot dispara de novo com o novo teste
+  }
+  firstLoad = false;
+
+  if (!currentTestId || !tests.find(t => t.id === currentTestId)) {
+    currentTestId = tests[0] ? tests[0].id : null;
+  }
+  setSyncStatus('online', 'Sincronizado com o Firebase');
+  renderTestSelect();
+  renderQList();
+  renderPresent();
+}, (err) => {
+  console.error(err);
+  setSyncStatus('error', 'Erro de conexão — veja o console');
+});
+
+function getCurrentTest() {
+  return tests.find(t => t.id === currentTestId);
+}
+
+function persistCurrentTestId() {
+  if (currentTestId) localStorage.setItem('mathquiz_current_test', currentTestId);
+}
+
+function typeset(container) {
+  if (window.MathJax && window.MathJax.typesetPromise) {
+    MathJax.typesetPromise(container ? [container] : undefined);
+  }
+}
+
+/* ---------- menu mobile ---------- */
+const sideNav = document.getElementById('side-nav');
+const overlay = document.getElementById('overlay');
+document.getElementById('menu-toggle').addEventListener('click', () => {
+  sideNav.classList.toggle('open');
+  overlay.classList.toggle('show');
+});
+overlay.addEventListener('click', () => {
+  sideNav.classList.remove('open');
+  overlay.classList.remove('show');
+});
+
+/* ---------- seletor de testes ---------- */
+function renderTestSelect() {
+  if (!tests.length) return;
+  const sel = document.getElementById('test-select');
+  sel.innerHTML = tests.map(t => `<option value="${t.id}" title="${escapeAttr(t.name)}" ${t.id === currentTestId ? 'selected' : ''}>${escapeHtml(t.name)} (${t.questions.length})</option>`).join('');
+  const name = getCurrentTest() ? getCurrentTest().name : '';
+  document.querySelectorAll('.page-test-tag').forEach(el => el.textContent = name);
+}
+
+document.getElementById('test-select').addEventListener('change', (e) => {
+  currentTestId = e.target.value;
+  persistCurrentTestId();
+  resetEditor();
+  renderTestSelect();
+  renderQList();
+  presentIndex = 0; gabaritoRevealed = false;
+  renderPresent();
+  document.getElementById('sheet-preview').innerHTML = '';
+});
+
+document.getElementById('btn-new-test').addEventListener('click', async () => {
+  const name = prompt('Nome do novo teste (ex: Frações — 7º Ano):');
+  if (!name || !name.trim()) return;
+  const ref = await addDoc(testsCol, { name: name.trim(), questions: [], createdAt: serverTimestamp() });
+  currentTestId = ref.id;
+  persistCurrentTestId();
+});
+
+document.getElementById('btn-rename-test').addEventListener('click', async () => {
+  const t = getCurrentTest();
+  if (!t) return;
+  const name = prompt('Novo nome para o teste:', t.name);
+  if (!name || !name.trim()) return;
+  await setDoc(doc(db, 'tests', t.id), { name: name.trim() }, { merge: true });
+});
+
+document.getElementById('btn-delete-test').addEventListener('click', async () => {
+  if (tests.length === 1) { alert('É preciso manter ao menos um teste.'); return; }
+  const t = getCurrentTest();
+  if (!t) return;
+  if (!confirm(`Excluir o teste "${t.name}" e todas as suas questões?`)) return;
+  await deleteDoc(doc(db, 'tests', t.id));
+  currentTestId = null;
+});
+
+/* ---------- navegação por abas ---------- */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('view-' + btn.dataset.tab).classList.add('active');
+    document.querySelector('main').classList.toggle('wide', btn.dataset.tab === 'apresentacao');
+    if (btn.dataset.tab === 'apresentacao') renderPresent();
+    if (btn.dataset.tab === 'questoes') typeset(document.getElementById('q-list'));
+    sideNav.classList.remove('open');
+    overlay.classList.remove('show');
+  });
+});
+
+document.getElementById('btn-fullscreen').addEventListener('click', () => {
+  const stage = document.getElementById('present-stage');
+  if (!document.fullscreenElement) {
+    stage.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen();
+  }
+});
+
+/* ---------- editor de questões ---------- */
+const altLetters = ['A', 'B', 'C', 'D'];
+
+function buildAltRows(existing) {
+  const wrap = document.getElementById('alt-rows');
+  wrap.innerHTML = '';
+  altLetters.forEach((letter, i) => {
+    const row = document.createElement('div');
+    row.className = 'alt-row';
+    const val = existing && existing.options[i] ? existing.options[i].text : '';
+    const checked = existing && existing.correct === letter ? 'checked' : '';
+    row.innerHTML = `
+      <input type="radio" name="correct-alt" id="radio-${letter}" value="${letter}" ${checked}>
+      <label for="radio-${letter}" class="alt-letter">${letter}</label>
+      <input type="text" class="alt-input" data-letter="${letter}" placeholder="Alternativa ${letter}" value="${escapeAttr(val)}">
+    `;
+    wrap.appendChild(row);
+  });
+}
+buildAltRows();
+
+function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;'); }
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+}
+function autoLatex(s) {
+  if (!s) return s;
+  if (s.includes('$')) return s;
+  if (/\\[a-zA-Z]+/.test(s)) return '$' + s + '$';
+  return s;
+}
+
+document.getElementById('q-text').addEventListener('input', (e) => {
+  const preview = document.getElementById('q-preview');
+  preview.textContent = autoLatex(e.target.value);
+  typeset(preview);
+});
+
+document.getElementById('btn-save-q').addEventListener('click', async () => {
+  const text = document.getElementById('q-text').value.trim();
+  if (!text) { alert('Digite o enunciado da questão.'); return; }
+
+  const options = [];
+  document.querySelectorAll('.alt-input').forEach(inp => {
+    options.push({ letter: inp.dataset.letter, text: inp.value.trim() });
+  });
+  if (options.some(o => !o.text)) { alert('Preencha todas as alternativas.'); return; }
+
+  const correctRadio = document.querySelector('input[name="correct-alt"]:checked');
+  if (!correctRadio) { alert('Marque a alternativa correta.'); return; }
+
+  const test = getCurrentTest();
+  if (!test) return;
+  let newQuestions;
+  if (editingId) {
+    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value } : q);
+  } else {
+    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value }];
+  }
+
+  await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
+  resetEditor();
+});
+
+document.getElementById('btn-cancel-edit').addEventListener('click', resetEditor);
+
+function resetEditor() {
+  editingId = null;
+  document.getElementById('q-text').value = '';
+  document.getElementById('q-preview').textContent = '';
+  buildAltRows();
+  document.getElementById('btn-save-q').textContent = 'Adicionar questão';
+  document.getElementById('btn-cancel-edit').style.display = 'none';
+}
+
+function renderQList() {
+  const test = getCurrentTest();
+  const list = document.getElementById('q-list');
+  if (!test) { list.innerHTML = ''; return; }
+  document.getElementById('q-count').textContent = test.questions.length;
+  if (test.questions.length === 0) {
+    list.innerHTML = '<div class="empty-note">Nenhuma questão ainda neste teste. Adicione a primeira acima.</div>';
+    return;
+  }
+  list.innerHTML = test.questions.map((q, i) => `
+    <div class="q-list-item">
+      <div class="q-head">
+        <span class="q-num">Questão ${i + 1}</span>
+        <span class="q-actions">
+          <button class="btn-ghost" data-edit="${q.id}">Editar</button>
+          <button class="btn-danger" data-del="${q.id}">Excluir</button>
+        </span>
+      </div>
+      <div class="q-text">${escapeHtml(autoLatex(q.text))}</div>
+      <div class="q-alts">
+        ${q.options.map(o => `<div class="${o.letter === q.correct ? 'correct' : ''}">${o.letter}) ${escapeHtml(autoLatex(o.text))}</div>`).join('')}
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editQuestion(Number(b.dataset.edit))));
+  list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteQuestion(Number(b.dataset.del))));
+  typeset(list);
+}
+
+function editQuestion(id) {
+  const test = getCurrentTest();
+  const q = test.questions.find(q => q.id === id);
+  if (!q) return;
+  editingId = id;
+  document.getElementById('q-text').value = q.text;
+  document.getElementById('q-preview').textContent = autoLatex(q.text);
+  typeset(document.getElementById('q-preview'));
+  buildAltRows(q);
+  document.getElementById('btn-save-q').textContent = 'Salvar alterações';
+  document.getElementById('btn-cancel-edit').style.display = 'inline-block';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function deleteQuestion(id) {
+  if (!confirm('Excluir esta questão?')) return;
+  const test = getCurrentTest();
+  const newQuestions = test.questions.filter(q => q.id !== id);
+  await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
+}
+
+/* ---------- apresentação ---------- */
+document.getElementById('btn-next').addEventListener('click', () => {
+  const test = getCurrentTest();
+  if (!test) return;
+  if (presentIndex < test.questions.length - 1) {
+    presentIndex++;
+    gabaritoRevealed = false;
+    renderPresent();
+  } else if (!gabaritoRevealed) {
+    gabaritoRevealed = true;
+    renderPresent();
+  }
+});
+document.getElementById('btn-prev').addEventListener('click', () => {
+  if (gabaritoRevealed) { gabaritoRevealed = false; renderPresent(); return; }
+  if (presentIndex > 0) { presentIndex--; renderPresent(); }
+});
+document.getElementById('btn-restart').addEventListener('click', () => {
+  presentIndex = 0; gabaritoRevealed = false; renderPresent();
+});
+
+function renderPresent() {
+  const test = getCurrentTest();
+  const empty = document.getElementById('present-empty');
+  const body = document.getElementById('present-body');
+  if (!test || test.questions.length === 0) {
+    empty.style.display = 'block'; body.style.display = 'none'; return;
+  }
+  empty.style.display = 'none'; body.style.display = 'block';
+  if (presentIndex > test.questions.length - 1) presentIndex = 0;
+
+  const stage = document.getElementById('present-stage');
+
+  if (gabaritoRevealed) {
+    stage.innerHTML = `
+      <div class="present-counter">Gabarito — ${escapeHtml(test.name)}</div>
+      <table class="gabarito-table">
+        <tr><th>Questão</th><th>Resposta correta</th></tr>
+        ${test.questions.map((q, i) => `<tr><td>${i + 1}</td><td class="letter">${q.correct}</td></tr>`).join('')}
+      </table>
+    `;
+    document.getElementById('btn-next').textContent = 'Próxima →';
+    document.getElementById('btn-next').disabled = true;
+    return;
+  }
+  document.getElementById('btn-next').disabled = false;
+
+  const q = test.questions[presentIndex];
+  const isLast = presentIndex === test.questions.length - 1;
+  stage.innerHTML = `
+    <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — ${escapeHtml(test.name)}</div>
+    <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
+    <div class="present-alts">
+      ${q.options.map(o => `
+        <div class="present-alt">
+          <span class="letter-badge">${o.letter}</span>
+          <span>${escapeHtml(autoLatex(o.text))}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  document.getElementById('btn-next').textContent = isLast ? 'Ver gabarito →' : 'Próxima →';
+  typeset(stage);
+}
+
+/* ---------- folha de respostas ---------- */
+document.getElementById('btn-build-sheet').addEventListener('click', buildSheet);
+
+function buildSheet() {
+  const test = getCurrentTest();
+  if (!test || test.questions.length === 0) {
+    document.getElementById('sheet-preview').innerHTML = '<p class="empty-note" style="color:#ccc;">Cadastre questões neste teste antes de gerar a folha.</p>';
+    return;
+  }
+  const title = document.getElementById('sheet-title').value || test.name;
+  const meta = document.getElementById('sheet-meta').value || '';
+  const copies = Math.max(1, parseInt(document.getElementById('sheet-copies').value) || 1);
+  const altCount = Math.min(6, Math.max(2, parseInt(document.getElementById('sheet-altcount').value) || 4));
+  const letters = altLetters.concat(['E', 'F']).slice(0, altCount);
+
+  const sheetHtml = buildSheetsHtml(test, title, meta, copies, letters);
+  document.getElementById('sheet-preview').innerHTML = sheetHtml;
+  document.getElementById('print-area').innerHTML = sheetHtml;
+}
+
+function buildSheetsHtml(test, title, meta, copies, letters) {
+  const perPage = 4;
+  let out = '';
+  for (let p = 0; p < Math.ceil(copies / perPage); p++) {
+    const colsInPage = Math.min(perPage, copies - p * perPage);
+    out += `<div class="sheet">`;
+    for (let c = 0; c < colsInPage; c++) {
+      out += `
+        <div class="mini-sheet">
+          <div class="mini-sheet-header">
+            <h2>${escapeHtml(title)}</h2>
+            <div class="meta">${escapeHtml(meta)}</div>
+          </div>
+          <div class="mini-idline">
+            <label>Nome:</label><span>&nbsp;</span>
+          </div>
+          <div class="mini-idline">
+            <label>Nº / Turma:</label><span>&nbsp;</span>
+          </div>
+          ${test.questions.map((q, i) => `
+            <div class="mini-q-row">
+              <span class="qn">${i + 1}.</span>
+              <div class="mini-bubbles">
+                ${letters.map(l => `<span class="mini-bubble">${l}</span>`).join('')}
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+    out += `</div>`;
+  }
+  return out;
+}
+
+document.getElementById('btn-print-sheet').addEventListener('click', () => {
+  buildSheet();
+  const test = getCurrentTest();
+  if (!test || test.questions.length === 0) return;
+  window.print();
+});
+
+} // startApp
+
+/* ---------- registro do service worker (PWA) ---------- */
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  });
+}
+</script>
+
+</body>
+</html>
