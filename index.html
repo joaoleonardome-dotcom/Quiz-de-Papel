@@ -4,6 +4,12 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Quiz de Papel — Matemática</title>
+<script>
+  (function() {
+    var t = localStorage.getItem('mathquiz_theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 
 <!-- PWA -->
 <link rel="manifest" href="manifest.json">
@@ -36,6 +42,20 @@
     --radius: 3px;
     --font: 'Arial Light', 'Helvetica Neue', Arial, sans-serif;
   }
+
+  html[data-theme="light"] {
+    --bg: #F5F1E4;
+    --surface: #FFFFFF;
+    --surface-2: #ECE6D4;
+    --line: #D9D2BC;
+    --chalk: #21302A;
+    --chalk-dim: #5B6B60;
+    --yellow: #B5892B;
+    --blue: #2F6B7A;
+    --wrong: #A8472F;
+  }
+
+  body { transition: background 0.2s ease, color 0.2s ease; }
 
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
@@ -221,6 +241,7 @@
   .q-list-item .q-text { margin: 6px 0 8px; }
   .q-list-item .q-alts { font-size: 0.9rem; color: var(--chalk-dim); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
   .q-list-item .q-alts .correct { color: var(--yellow); }
+  .q-time-tag { font-size: 0.75rem; color: var(--blue); margin-top: 6px; }
   .q-actions button { font-size: 0.78rem; padding: 8px 12px; margin-left: 6px; min-height: 38px; }
   .empty-note { color: var(--chalk-dim); padding: 20px 0; font-weight: 300; }
 
@@ -246,6 +267,30 @@
   }
   .present-nav { display: flex; justify-content: space-between; align-items: center; margin-top: 26px; gap: 10px; flex-wrap: wrap; }
 
+  .present-timer {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface-2); border: 1px solid var(--line); color: var(--chalk);
+    padding: 6px 16px; border-radius: 20px; font-size: 1.1rem; margin-bottom: 16px;
+  }
+  .present-timer.low { color: var(--wrong); border-color: var(--wrong); }
+
+  .present-intro { text-align: center; }
+  .present-intro-title { font-size: 2rem; font-weight: 500; line-height: 1.4; color: var(--chalk); }
+
+  .gabarito-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 14px;
+    margin-top: 16px;
+  }
+  .gabarito-item {
+    display: flex; align-items: baseline; gap: 10px;
+    background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 16px;
+  }
+  .gab-num { color: var(--chalk-dim); font-size: 1rem; flex-shrink: 0; }
+  .gab-letter { color: var(--yellow); font-weight: 600; font-size: 2.4rem; line-height: 1; }
+
   .present-stage.stage-immersive {
     position: fixed;
     inset: 0;
@@ -264,7 +309,20 @@
   .present-stage.stage-immersive .present-question { font-size: 4.2vw; line-height: 1.4; }
   .present-stage.stage-immersive .present-alt { font-size: 2.8vw; }
   .present-stage.stage-immersive .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
-  .present-stage.stage-immersive .gabarito-table { font-size: 1.6rem; }
+  .present-stage.stage-immersive .present-intro-title { font-size: 5vw; }
+  .present-stage.stage-immersive .gabarito-grid { grid-template-columns: repeat(auto-fill, minmax(15vw, 1fr)); gap: 2vw; }
+  .present-stage.stage-immersive .gab-num { font-size: 1.4vw; }
+  .present-stage.stage-immersive .gab-letter { font-size: 5vw; }
+
+  .present-stage.stage-immersive .present-timer {
+    position: fixed;
+    top: max(3vh, 14px); left: max(3vw, 14px);
+    font-size: 1.6rem;
+    padding: 10px 22px;
+    z-index: 210;
+    background: var(--surface);
+    margin-bottom: 0;
+  }
 
   .present-exit-fs { display: none; }
   .present-stage.stage-immersive .present-exit-fs {
@@ -306,13 +364,6 @@
     .present-stage.stage-immersive .present-alt { font-size: 4vw; }
     .present-fs-nav button { padding: 14px 20px; font-size: 1rem; min-height: 50px; }
   }
-
-  .gabarito-table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-  .gabarito-table th, .gabarito-table td {
-    text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); font-weight: 300;
-  }
-  .gabarito-table th { color: var(--chalk-dim); font-size: 0.8rem; font-weight: 400; }
-  .gabarito-table td.letter { color: var(--yellow); font-weight: 500; font-size: 1.05rem; }
 
   /* folha de respostas / print */
   .sheet-settings { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 24px; }
@@ -407,6 +458,9 @@
 <div class="app">
   <nav class="side" id="side-nav">
     <div class="brand">Quiz de <em>Papel</em></div>
+    <div style="padding: 0 22px 18px;">
+      <button class="btn-ghost" id="theme-toggle" style="width:100%;">🌙 Tema escuro</button>
+    </div>
     <div class="sync-status" id="sync-status"><span class="sync-dot"></span><span id="sync-text">Conectando ao Firebase…</span></div>
 
     <div class="test-picker">
@@ -438,6 +492,11 @@
           <textarea id="q-text" placeholder="Digite a questão. Ex: Qual o valor de x em 2x + 5 = 15?"></textarea>
         </div>
         <div id="q-preview" class="field" style="min-height:1.4em;"></div>
+
+        <div class="field">
+          <label>Tempo para responder (opcional)</label>
+          <input type="number" id="q-time" placeholder="Sem limite de tempo" min="1" style="max-width:240px;">
+        </div>
 
         <label>Alternativas (marque a correta)</label>
         <div id="alt-rows"></div>
@@ -543,6 +602,21 @@ import {
   getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
 
+/* ---------- tema claro/escuro ---------- */
+function applyTheme(theme) {
+  document.documentElement.setAttribute('data-theme', theme);
+  const btn = document.getElementById('theme-toggle');
+  if (btn) btn.textContent = theme === 'light' ? '🌙 Tema escuro' : '☀️ Tema claro';
+  const metaTheme = document.querySelector('meta[name="theme-color"]');
+  if (metaTheme) metaTheme.setAttribute('content', theme === 'light' ? '#F5F1E4' : '#21302A');
+  localStorage.setItem('mathquiz_theme', theme);
+}
+applyTheme(document.documentElement.getAttribute('data-theme') || 'dark');
+document.getElementById('theme-toggle').addEventListener('click', () => {
+  const current = document.documentElement.getAttribute('data-theme') || 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
+});
+
 /* ---------- checagem de configuração ---------- */
 const isPlaceholder = !firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('SUA_API_KEY');
 if (isPlaceholder) {
@@ -562,7 +636,8 @@ let tests = [];
 let currentTestId = localStorage.getItem('mathquiz_current_test');
 let editingId = null;
 let presentIndex = 0;
-let gabaritoRevealed = false;
+let presentState = 'intro'; // 'intro' | 'question' | 'end' | 'gabarito'
+let presentTimerId = null;
 let firstLoad = true;
 
 function setSyncStatus(state, text) {
@@ -634,7 +709,7 @@ document.getElementById('test-select').addEventListener('change', (e) => {
   resetEditor();
   renderTestSelect();
   renderQList();
-  presentIndex = 0; gabaritoRevealed = false;
+  presentIndex = 0; presentState = 'intro';
   renderPresent();
   document.getElementById('sheet-preview').innerHTML = '';
 });
@@ -672,7 +747,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     btn.classList.add('active');
     document.getElementById('view-' + btn.dataset.tab).classList.add('active');
     document.querySelector('main').classList.toggle('wide', btn.dataset.tab === 'apresentacao');
-    if (btn.dataset.tab === 'apresentacao') renderPresent();
+    if (btn.dataset.tab === 'apresentacao') { renderPresent(); }
+    else { clearPresentTimer(); }
     if (btn.dataset.tab === 'questoes') typeset(document.getElementById('q-list'));
     sideNav.classList.remove('open');
     overlay.classList.remove('show');
@@ -769,13 +845,16 @@ document.getElementById('btn-save-q').addEventListener('click', async () => {
   const correctRadio = document.querySelector('input[name="correct-alt"]:checked');
   if (!correctRadio) { alert('Marque a alternativa correta.'); return; }
 
+  const timeRaw = document.getElementById('q-time').value;
+  const timeLimit = timeRaw ? Math.max(1, parseInt(timeRaw)) : null;
+
   const test = getCurrentTest();
   if (!test) return;
   let newQuestions;
   if (editingId) {
-    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value } : q);
+    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value, timeLimit } : q);
   } else {
-    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value }];
+    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value, timeLimit }];
   }
 
   await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
@@ -788,6 +867,7 @@ function resetEditor() {
   editingId = null;
   document.getElementById('q-text').value = '';
   document.getElementById('q-preview').textContent = '';
+  document.getElementById('q-time').value = '';
   buildAltRows();
   document.getElementById('btn-save-q').textContent = 'Adicionar questão';
   document.getElementById('btn-cancel-edit').style.display = 'none';
@@ -812,6 +892,7 @@ function renderQList() {
         </span>
       </div>
       <div class="q-text">${escapeHtml(autoLatex(q.text))}</div>
+      <div class="q-time-tag">⏱ ${q.timeLimit ? q.timeLimit + 's por questão' : 'Sem tempo limite'}</div>
       <div class="q-alts">
         ${q.options.map(o => `<div class="${o.letter === q.correct ? 'correct' : ''}">${o.letter}) ${escapeHtml(autoLatex(o.text))}</div>`).join('')}
       </div>
@@ -830,6 +911,7 @@ function editQuestion(id) {
   document.getElementById('q-text').value = q.text;
   document.getElementById('q-preview').textContent = autoLatex(q.text);
   typeset(document.getElementById('q-preview'));
+  document.getElementById('q-time').value = q.timeLimit || '';
   buildAltRows(q);
   document.getElementById('btn-save-q').textContent = 'Salvar alterações';
   document.getElementById('btn-cancel-edit').style.display = 'inline-block';
@@ -844,36 +926,55 @@ async function deleteQuestion(id) {
 }
 
 /* ---------- apresentação ---------- */
-document.getElementById('btn-next').addEventListener('click', () => {
+function clearPresentTimer() {
+  if (presentTimerId) { clearInterval(presentTimerId); presentTimerId = null; }
+}
+
+function goNext() {
   const test = getCurrentTest();
   if (!test) return;
-  if (presentIndex < test.questions.length - 1) {
-    presentIndex++;
-    gabaritoRevealed = false;
-    renderPresent();
-  } else if (!gabaritoRevealed) {
-    gabaritoRevealed = true;
-    renderPresent();
+  if (presentState === 'intro') {
+    presentState = 'question'; presentIndex = 0;
+  } else if (presentState === 'question') {
+    if (presentIndex < test.questions.length - 1) presentIndex++;
+    else presentState = 'end';
+  } else if (presentState === 'end') {
+    presentState = 'gabarito';
+  } else {
+    return; // gabarito: fim de linha
   }
-});
-document.getElementById('btn-prev').addEventListener('click', () => {
-  if (gabaritoRevealed) { gabaritoRevealed = false; renderPresent(); return; }
-  if (presentIndex > 0) { presentIndex--; renderPresent(); }
-});
+  renderPresent();
+}
+
+function goPrev() {
+  const test = getCurrentTest();
+  if (!test) return;
+  if (presentState === 'gabarito') {
+    presentState = 'end';
+  } else if (presentState === 'end') {
+    presentState = 'question'; presentIndex = test.questions.length - 1;
+  } else if (presentState === 'question') {
+    if (presentIndex > 0) presentIndex--;
+    else presentState = 'intro';
+  } else {
+    return; // intro: fim de linha
+  }
+  renderPresent();
+}
+
+document.getElementById('btn-next').addEventListener('click', goNext);
+document.getElementById('btn-prev').addEventListener('click', goPrev);
 document.getElementById('btn-restart').addEventListener('click', () => {
-  presentIndex = 0; gabaritoRevealed = false; renderPresent();
+  presentIndex = 0; presentState = 'intro'; renderPresent();
 });
-document.getElementById('btn-next-fs').addEventListener('click', () => {
-  document.getElementById('btn-next').click();
-});
-document.getElementById('btn-prev-fs').addEventListener('click', () => {
-  document.getElementById('btn-prev').click();
-});
+document.getElementById('btn-next-fs').addEventListener('click', goNext);
+document.getElementById('btn-prev-fs').addEventListener('click', goPrev);
 
 function renderPresent() {
   const test = getCurrentTest();
   const empty = document.getElementById('present-empty');
   const body = document.getElementById('present-body');
+  clearPresentTimer();
   if (!test || test.questions.length === 0) {
     empty.style.display = 'block'; body.style.display = 'none'; return;
   }
@@ -881,28 +982,60 @@ function renderPresent() {
   if (presentIndex > test.questions.length - 1) presentIndex = 0;
 
   const stage = document.getElementById('present-stage-content');
+  const btnNext = document.getElementById('btn-next');
+  const btnNextFs = document.getElementById('btn-next-fs');
+  const btnPrev = document.getElementById('btn-prev');
+  const btnPrevFs = document.getElementById('btn-prev-fs');
 
-  if (gabaritoRevealed) {
+  if (presentState === 'intro') {
     stage.innerHTML = `
-      <div class="present-counter">Gabarito — ${escapeHtml(test.name)}</div>
-      <table class="gabarito-table">
-        <tr><th>Questão</th><th>Resposta correta</th></tr>
-        ${test.questions.map((q, i) => `<tr><td>${i + 1}</td><td class="letter">${q.correct}</td></tr>`).join('')}
-      </table>
+      <div class="present-intro">
+        <div class="present-intro-title">O QUIZ VAI COMEÇAR,<br>VOCÊ ESTÁ PRONTO?</div>
+      </div>
     `;
-    document.getElementById('btn-next').textContent = 'Próxima →';
-    document.getElementById('btn-next').disabled = true;
-    document.getElementById('btn-next-fs').textContent = 'Próxima →';
-    document.getElementById('btn-next-fs').disabled = true;
+    btnNext.textContent = 'Começar ▶'; btnNext.disabled = false;
+    btnNextFs.textContent = 'Começar ▶'; btnNextFs.disabled = false;
+    btnPrev.disabled = true; btnPrevFs.disabled = true;
     return;
   }
-  document.getElementById('btn-next').disabled = false;
-  document.getElementById('btn-next-fs').disabled = false;
 
+  if (presentState === 'end') {
+    stage.innerHTML = `
+      <div class="present-intro">
+        <div class="present-intro-title">ATIVIDADE CONCLUÍDA</div>
+      </div>
+    `;
+    btnNext.textContent = 'Ver gabarito →'; btnNext.disabled = false;
+    btnNextFs.textContent = 'Ver gabarito →'; btnNextFs.disabled = false;
+    btnPrev.disabled = false; btnPrevFs.disabled = false;
+    return;
+  }
+
+  if (presentState === 'gabarito') {
+    stage.innerHTML = `
+      <div class="present-counter">Gabarito — ${escapeHtml(test.name)}</div>
+      <div class="gabarito-grid">
+        ${test.questions.map((q, i) => `
+          <div class="gabarito-item"><span class="gab-num">${i + 1}.</span><span class="gab-letter">${q.correct}</span></div>
+        `).join('')}
+      </div>
+    `;
+    btnNext.textContent = 'Próxima →';
+    btnNext.disabled = true;
+    btnNextFs.textContent = 'Próxima →';
+    btnNextFs.disabled = true;
+    btnPrev.disabled = false; btnPrevFs.disabled = false;
+    return;
+  }
+
+  // presentState === 'question'
+  btnPrev.disabled = false; btnPrevFs.disabled = false;
   const q = test.questions[presentIndex];
   const isLast = presentIndex === test.questions.length - 1;
+  const hasTimer = !!(q.timeLimit && q.timeLimit > 0);
   stage.innerHTML = `
     <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — ${escapeHtml(test.name)}</div>
+    ${hasTimer ? `<div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div>` : ''}
     <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     <div class="present-alts">
       ${q.options.map(o => `
@@ -913,9 +1046,26 @@ function renderPresent() {
       `).join('')}
     </div>
   `;
-  document.getElementById('btn-next').textContent = isLast ? 'Ver gabarito →' : 'Próxima →';
-  document.getElementById('btn-next-fs').textContent = isLast ? 'Ver gabarito →' : 'Próxima →';
+  btnNext.textContent = isLast ? 'Concluir →' : 'Próxima →';
+  btnNextFs.textContent = isLast ? 'Concluir →' : 'Próxima →';
+  btnNext.disabled = false; btnNextFs.disabled = false;
   typeset(stage);
+
+  if (hasTimer) {
+    let remaining = q.timeLimit;
+    presentTimerId = setInterval(() => {
+      remaining--;
+      const valEl = document.getElementById('present-timer-value');
+      const timerEl = document.getElementById('present-timer');
+      if (remaining <= 0) {
+        clearPresentTimer();
+        goNext();
+        return;
+      }
+      if (valEl) valEl.textContent = remaining;
+      if (timerEl && remaining <= 5) timerEl.classList.add('low');
+    }, 1000);
+  }
 }
 
 /* ---------- folha de respostas ---------- */
