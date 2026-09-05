@@ -512,31 +512,6 @@
 <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">☰</button>
 <div class="overlay" id="overlay"></div>
 
-<div id="role-root" style="display:none;">
-  <div class="role-screen">
-    <div class="role-card">
-      <div class="brand">Quiz de <em>Papel</em></div>
-      <svg class="brand-rule" style="margin-left:auto; margin-right:auto;" width="150" height="10" viewBox="0 0 226 10" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M2 6 C 30 2, 45 9, 74 5 S 118 2, 150 6 S 196 9, 224 4" fill="none" stroke-width="2.4" stroke-linecap="round"/>
-      </svg>
-      <p class="role-sub">Como você quer entrar?</p>
-      <div class="role-buttons">
-        <button class="role-btn" id="btn-role-teacher">
-          <span class="role-btn-icon">🖊️</span>
-          <span class="role-btn-label">Sou Professor(a)</span>
-          <span class="role-btn-desc">Criar questões e projetar o quiz</span>
-        </button>
-        <button class="role-btn" id="btn-role-student">
-          <span class="role-btn-icon">🎓</span>
-          <span class="role-btn-label">Sou Aluno(a)</span>
-          <span class="role-btn-desc">Estudar para a avaliação</span>
-        </button>
-      </div>
-      <button class="btn-ghost theme-toggle-btn" id="theme-toggle-role" style="margin-top:26px;">🌙 Tema escuro</button>
-    </div>
-  </div>
-</div>
-
 <div id="app-root" style="display:none;">
 <div class="app">
   <nav class="side" id="side-nav">
@@ -569,9 +544,8 @@
       Folha de respostas
     </button>
 
-    <div style="padding: 18px 22px 0; display:flex; flex-direction:column; gap:8px;">
-      <button class="btn-ghost theme-toggle-btn" id="theme-toggle" style="width:100%;">🌙 Tema escuro</button>
-      <button class="btn-ghost" id="btn-teacher-exit" style="width:100%;">↺ Trocar de área</button>
+    <div style="padding: 18px 22px 0;">
+      <button class="btn-ghost" id="theme-toggle" style="width:100%;">🌙 Tema escuro</button>
     </div>
   </nav>
 
