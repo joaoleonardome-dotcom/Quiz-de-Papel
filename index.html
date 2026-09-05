@@ -305,7 +305,7 @@
   /* form elements */
   label { display: block; font-size: 0.82rem; color: var(--chalk-dim); margin-bottom: 6px; font-weight: 500; }
 
-  input[type=text], input[type=number], input[type=password], textarea {
+  input[type=text], input[type=number], input[type=password], select, textarea {
     width: 100%;
     background: var(--surface-2);
     border: 1px solid var(--line);
@@ -317,8 +317,9 @@
     font-size: 1rem;
     transition: border-color 0.15s ease;
   }
+  select { cursor: pointer; }
   textarea { resize: vertical; min-height: 64px; }
-  input:focus, textarea:focus { outline: none; border-color: var(--yellow); }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--yellow); }
 
   .field { margin-bottom: 16px; }
 
