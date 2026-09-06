@@ -856,6 +856,9 @@ import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/fireba
 import {
   getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp
 } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js';
+import {
+  getAuth, signInWithEmailAndPassword, signOut, setPersistence, browserSessionPersistence, onAuthStateChanged
+} from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-auth.js';
 
 /* ---------- tema claro/escuro ---------- */
 function applyTheme(theme) {
@@ -888,8 +891,12 @@ function startApp() {
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const testsCol = collection(db, 'tests');
+const auth = getAuth(app);
+setPersistence(auth, browserSessionPersistence).catch(() => {});
 
-const TEACHER_PASSWORD = 'Arena123';
+// e-mail fixo usado só como identificador da conta do(a) professor(a) no Firebase Authentication.
+// Crie esse usuário em Firebase Console → Authentication → Users, com a senha desejada.
+const TEACHER_EMAIL = 'professor@quizdepapel.app';
 
 let tests = [];
 let currentTestId = localStorage.getItem('mathquiz_current_test');
@@ -1447,15 +1454,25 @@ document.getElementById('btn-teacher-cancel').addEventListener('click', () => {
   document.getElementById('role-buttons').style.display = 'grid';
 });
 
-function tryTeacherLogin() {
+async function tryTeacherLogin() {
   const val = document.getElementById('role-teacher-password').value;
-  if (val === TEACHER_PASSWORD) {
-    sessionStorage.setItem('mathquiz_role', 'teacher');
-    showRole('teacher');
-  } else {
-    document.getElementById('role-gate-error').style.display = 'block';
+  const confirmBtn = document.getElementById('btn-teacher-confirm');
+  const errorEl = document.getElementById('role-gate-error');
+  errorEl.style.display = 'none';
+  if (!val) return;
+  confirmBtn.disabled = true;
+  confirmBtn.textContent = 'Entrando…';
+  try {
+    await signInWithEmailAndPassword(auth, TEACHER_EMAIL, val);
+    // onAuthStateChanged cuida de mostrar a área do professor
+  } catch (err) {
+    errorEl.textContent = 'Senha incorreta. Tente novamente.';
+    errorEl.style.display = 'block';
     document.getElementById('role-teacher-password').value = '';
     document.getElementById('role-teacher-password').focus();
+  } finally {
+    confirmBtn.disabled = false;
+    confirmBtn.textContent = 'Entrar';
   }
 }
 document.getElementById('btn-teacher-confirm').addEventListener('click', tryTeacherLogin);
@@ -1464,8 +1481,8 @@ document.getElementById('role-teacher-password').addEventListener('keydown', (e)
 });
 
 function exitToRoleSelect() {
-  sessionStorage.removeItem('mathquiz_role');
   localStorage.removeItem('mathquiz_role');
+  signOut(auth).catch(() => {});
   showRole(null);
 }
 document.getElementById('btn-teacher-exit').addEventListener('click', exitToRoleSelect);
@@ -1570,11 +1587,18 @@ function renderStudentQuestion() {
   });
 }
 
-/* entrada inicial: professor autenticado nesta sessão, aluno lembrado, ou tela de escolha */
-const savedRole = sessionStorage.getItem('mathquiz_role') === 'teacher'
-  ? 'teacher'
-  : (localStorage.getItem('mathquiz_role') === 'student' ? 'student' : null);
-showRole(savedRole);
+/* entrada inicial: o Firebase Authentication decide se o professor está logado.
+   Isso acontece de forma assíncrona (onAuthStateChanged), então a rota inicial
+   é definida ali, não aqui. */
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    showRole('teacher');
+  } else if (localStorage.getItem('mathquiz_role') === 'student') {
+    showRole('student');
+  } else {
+    showRole(null);
+  }
+});
 
 } // startApp
 
