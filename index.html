@@ -375,6 +375,58 @@
     box-shadow: var(--shadow-lift);
   }
 
+  /* tela de carregamento inicial */
+  #boot-loader {
+    position: fixed; inset: 0;
+    background: var(--bg);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 1000;
+    transition: opacity 0.25s ease;
+  }
+  #boot-loader.fade-out { opacity: 0; pointer-events: none; }
+  .boot-loader-inner { text-align: center; }
+  .boot-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid var(--line);
+    border-top-color: var(--yellow);
+    border-radius: 50%;
+    margin: 0 auto 14px;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .boot-spinner { animation: boot-spin 0.8s linear infinite; }
+  }
+  @keyframes boot-spin { to { transform: rotate(360deg); } }
+  .boot-loader-text { color: var(--chalk-dim); font-size: 0.9rem; font-family: var(--font); }
+
+  /* modal (substitui alert/confirm/prompt nativos) */
+  .app-modal-overlay {
+    display: none;
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 500;
+    align-items: center; justify-content: center;
+    padding: 20px;
+  }
+  .app-modal-overlay.open { display: flex; }
+  body.modal-open { overflow: hidden; }
+  .app-modal {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lift);
+    padding: 28px 26px;
+    max-width: 420px;
+    width: 100%;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .app-modal-overlay.open .app-modal { animation: modal-in 0.15s ease-out; }
+  }
+  @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(0.98); } to { opacity: 1; transform: none; } }
+  .app-modal-title { font-family: var(--font-display); font-size: 1.3rem; font-weight: 600; margin-bottom: 10px; }
+  .app-modal-message { color: var(--chalk); line-height: 1.55; margin-bottom: 20px; white-space: pre-wrap; }
+  .app-modal-input-wrap { margin-bottom: 20px; }
+  .app-modal-actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+
   .q-list-item {
     background: var(--surface);
     border: 1px solid var(--line);
@@ -470,9 +522,9 @@
   }
   body.stage-immersive-lock { overflow: hidden; }
   .present-stage.stage-immersive .present-counter { font-size: 1.6rem; }
-  .present-stage.stage-immersive .present-question { font-size: 4.2vw; line-height: 1.4; }
-  .present-stage.stage-immersive .present-alt { font-size: 2.8vw; }
-  .present-stage.stage-immersive .present-alt .letter-badge { width: 3.4vw; height: 3.4vw; font-size: 1.8vw; }
+  .present-stage.stage-immersive .present-question { font-size: 3.3vw; line-height: 1.4; }
+  .present-stage.stage-immersive .present-alt { font-size: 2.4vw; }
+  .present-stage.stage-immersive .present-alt .letter-badge { width: 3vw; height: 3vw; font-size: 1.6vw; }
   .present-stage.stage-immersive .present-intro-title { font-size: 5vw; }
   .present-stage.stage-immersive .present-chalk-rule { width: 22vw; margin-top: 2.5vh; }
   .present-stage.stage-immersive .gabarito-grid { grid-template-columns: repeat(auto-fill, minmax(15vw, 1fr)); gap: 2vw; }
@@ -527,8 +579,8 @@
 
   @media (max-width: 900px) {
     .present-stage.stage-immersive { padding: 4vh 6vw 14vh; }
-    .present-stage.stage-immersive .present-question { font-size: 6vw; }
-    .present-stage.stage-immersive .present-alt { font-size: 4vw; }
+    .present-stage.stage-immersive .present-question { font-size: 4.8vw; }
+    .present-stage.stage-immersive .present-alt { font-size: 3.2vw; }
     .present-stage.stage-immersive .present-timer { font-size: 1.8rem; padding: 12px 22px; }
     .present-fs-nav button { padding: 14px 20px; font-size: 1rem; min-height: 50px; }
   }
@@ -619,6 +671,13 @@
 </style>
 </head>
 <body>
+
+<div id="boot-loader">
+  <div class="boot-loader-inner">
+    <div class="boot-spinner"></div>
+    <div class="boot-loader-text">Carregando…</div>
+  </div>
+</div>
 
 <button class="menu-toggle" id="menu-toggle" aria-label="Abrir menu">☰</button>
 <div class="overlay" id="overlay"></div>
@@ -850,6 +909,20 @@
 
 <div id="print-area"></div>
 
+<div class="app-modal-overlay" id="app-modal-overlay">
+  <div class="app-modal" role="dialog" aria-modal="true" aria-labelledby="app-modal-message">
+    <div class="app-modal-title" id="app-modal-title" style="display:none;"></div>
+    <div class="app-modal-message" id="app-modal-message"></div>
+    <div class="app-modal-input-wrap" id="app-modal-input-wrap" style="display:none;">
+      <input type="text" id="app-modal-input">
+    </div>
+    <div class="app-modal-actions">
+      <button class="btn-ghost" id="app-modal-cancel">Cancelar</button>
+      <button class="btn-primary" id="app-modal-confirm">OK</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { firebaseConfig } from './firebase-config.js';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
@@ -878,10 +951,88 @@ document.querySelectorAll('.theme-toggle-btn').forEach(btn => {
   });
 });
 
+/* ---------- modal (substitui alert/confirm/prompt nativos) ---------- */
+function showModal({ type, title, message, defaultValue = '', confirmLabel = 'OK', cancelLabel = 'Cancelar', danger = false }) {
+  return new Promise((resolve) => {
+    const overlay = document.getElementById('app-modal-overlay');
+    const titleEl = document.getElementById('app-modal-title');
+    const msgEl = document.getElementById('app-modal-message');
+    const inputWrap = document.getElementById('app-modal-input-wrap');
+    const inputEl = document.getElementById('app-modal-input');
+    const cancelBtn = document.getElementById('app-modal-cancel');
+    const confirmBtn = document.getElementById('app-modal-confirm');
+
+    if (title) { titleEl.textContent = title; titleEl.style.display = 'block'; }
+    else { titleEl.style.display = 'none'; }
+    msgEl.textContent = message || '';
+
+    const isPrompt = type === 'prompt';
+    inputWrap.style.display = isPrompt ? 'block' : 'none';
+    if (isPrompt) inputEl.value = defaultValue || '';
+
+    cancelBtn.style.display = type === 'alert' ? 'none' : 'inline-block';
+    confirmBtn.textContent = confirmLabel;
+    confirmBtn.className = danger ? 'btn-danger' : 'btn-primary';
+
+    function cleanup(result) {
+      overlay.classList.remove('open');
+      document.body.classList.remove('modal-open');
+      confirmBtn.removeEventListener('click', onConfirm);
+      cancelBtn.removeEventListener('click', onCancel);
+      overlay.removeEventListener('mousedown', onOverlayClick);
+      document.removeEventListener('keydown', onKeydown);
+      resolve(result);
+    }
+    function onConfirm() {
+      if (isPrompt) cleanup(inputEl.value.trim() || null);
+      else cleanup(true);
+    }
+    function onCancel() {
+      cleanup(isPrompt ? null : false);
+    }
+    function onOverlayClick(e) {
+      if (e.target === overlay) onCancel();
+    }
+    function onKeydown(e) {
+      if (e.key === 'Escape') onCancel();
+      else if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+    }
+
+    confirmBtn.addEventListener('click', onConfirm);
+    cancelBtn.addEventListener('click', onCancel);
+    overlay.addEventListener('mousedown', onOverlayClick);
+    document.addEventListener('keydown', onKeydown);
+
+    overlay.classList.add('open');
+    document.body.classList.add('modal-open');
+    if (isPrompt) { inputEl.focus(); inputEl.select(); }
+    else confirmBtn.focus();
+  });
+}
+function appAlert(message, opts = {}) {
+  return showModal({ type: 'alert', message, confirmLabel: opts.confirmLabel || 'OK', title: opts.title });
+}
+function appConfirm(message, opts = {}) {
+  return showModal({ type: 'confirm', message, confirmLabel: opts.confirmLabel || 'Confirmar', cancelLabel: opts.cancelLabel || 'Cancelar', danger: opts.danger, title: opts.title });
+}
+function appPrompt(message, defaultValue = '', opts = {}) {
+  return showModal({ type: 'prompt', message, defaultValue, confirmLabel: opts.confirmLabel || 'OK', cancelLabel: opts.cancelLabel || 'Cancelar', title: opts.title });
+}
+
+/* ---------- tela de carregamento inicial ---------- */
+function hideBootLoader() {
+  const loader = document.getElementById('boot-loader');
+  if (!loader) return;
+  loader.classList.add('fade-out');
+  setTimeout(() => { loader.style.display = 'none'; }, 300);
+}
+setTimeout(hideBootLoader, 6000); // segurança: nunca trava indefinidamente
+
 /* ---------- checagem de configuração ---------- */
 const isPlaceholder = !firebaseConfig || !firebaseConfig.apiKey || firebaseConfig.apiKey.includes('SUA_API_KEY');
 if (isPlaceholder) {
   document.getElementById('setup-root').style.display = 'block';
+  hideBootLoader();
 } else {
   startApp();
 }
@@ -965,7 +1116,8 @@ overlay.addEventListener('click', () => {
 function renderTestSelect() {
   if (!tests.length) return;
   const sel = document.getElementById('test-select');
-  sel.innerHTML = tests.map(t => `<option value="${t.id}" title="${escapeAttr(t.name)}" ${t.id === currentTestId ? 'selected' : ''}>${escapeHtml(t.name)} (${t.questions.length})</option>`).join('');
+  const sorted = [...tests].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+  sel.innerHTML = sorted.map(t => `<option value="${t.id}" title="${escapeAttr(t.name)}" ${t.id === currentTestId ? 'selected' : ''}>${escapeHtml(t.name)} (${t.questions.length})</option>`).join('');
   const name = getCurrentTest() ? getCurrentTest().name : '';
   document.querySelectorAll('.page-test-tag').forEach(el => el.textContent = name);
 }
@@ -982,8 +1134,8 @@ document.getElementById('test-select').addEventListener('change', (e) => {
 });
 
 document.getElementById('btn-new-test').addEventListener('click', async () => {
-  const name = prompt('Nome do novo teste (ex: Frações — 7º Ano):');
-  if (!name || !name.trim()) return;
+  const name = await appPrompt('Nome do novo teste (ex: Frações — 7º Ano):', '', { title: 'Novo teste', confirmLabel: 'Criar' });
+  if (!name) return;
   const ref = await addDoc(testsCol, { name: name.trim(), questions: [], createdAt: serverTimestamp() });
   currentTestId = ref.id;
   persistCurrentTestId();
@@ -992,16 +1144,17 @@ document.getElementById('btn-new-test').addEventListener('click', async () => {
 document.getElementById('btn-rename-test').addEventListener('click', async () => {
   const t = getCurrentTest();
   if (!t) return;
-  const name = prompt('Novo nome para o teste:', t.name);
-  if (!name || !name.trim()) return;
+  const name = await appPrompt('Novo nome para o teste:', t.name, { title: 'Renomear teste', confirmLabel: 'Salvar' });
+  if (!name) return;
   await setDoc(doc(db, 'tests', t.id), { name: name.trim() }, { merge: true });
 });
 
 document.getElementById('btn-delete-test').addEventListener('click', async () => {
-  if (tests.length === 1) { alert('É preciso manter ao menos um teste.'); return; }
+  if (tests.length === 1) { await appAlert('É preciso manter ao menos um teste.'); return; }
   const t = getCurrentTest();
   if (!t) return;
-  if (!confirm(`Excluir o teste "${t.name}" e todas as suas questões?`)) return;
+  const ok = await appConfirm(`Excluir o teste "${t.name}" e todas as suas questões?`, { title: 'Excluir teste', confirmLabel: 'Excluir', danger: true });
+  if (!ok) return;
   await deleteDoc(doc(db, 'tests', t.id));
   currentTestId = null;
 });
@@ -1101,16 +1254,16 @@ document.getElementById('q-text').addEventListener('input', (e) => {
 
 document.getElementById('btn-save-q').addEventListener('click', async () => {
   const text = document.getElementById('q-text').value.trim();
-  if (!text) { alert('Digite o enunciado da questão.'); return; }
+  if (!text) { await appAlert('Digite o enunciado da questão.'); return; }
 
   const options = [];
   document.querySelectorAll('.alt-input').forEach(inp => {
     options.push({ letter: inp.dataset.letter, text: inp.value.trim() });
   });
-  if (options.some(o => !o.text)) { alert('Preencha todas as alternativas.'); return; }
+  if (options.some(o => !o.text)) { await appAlert('Preencha todas as alternativas.'); return; }
 
   const correctRadio = document.querySelector('input[name="correct-alt"]:checked');
-  if (!correctRadio) { alert('Marque a alternativa correta.'); return; }
+  if (!correctRadio) { await appAlert('Marque a alternativa correta.'); return; }
 
   const timeRaw = document.getElementById('q-time').value;
   const timeLimit = timeRaw ? Math.max(1, parseInt(timeRaw)) : null;
@@ -1186,7 +1339,8 @@ function editQuestion(id) {
 }
 
 async function deleteQuestion(id) {
-  if (!confirm('Excluir esta questão?')) return;
+  const ok = await appConfirm('Excluir esta questão?', { title: 'Excluir questão', confirmLabel: 'Excluir', danger: true });
+  if (!ok) return;
   const test = getCurrentTest();
   const newQuestions = test.questions.filter(q => q.id !== id);
   await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
@@ -1497,13 +1651,14 @@ let studentAnswered = false;
 function renderStudentPicker() {
   const sel = document.getElementById('student-test-select');
   if (!sel) return;
-  sel.innerHTML = tests.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.questions.length} questões)</option>`).join('');
+  const sorted = [...tests].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' }));
+  sel.innerHTML = sorted.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.questions.length} questões)</option>`).join('');
 }
 
-document.getElementById('btn-student-start').addEventListener('click', () => {
+document.getElementById('btn-student-start').addEventListener('click', async () => {
   const sel = document.getElementById('student-test-select');
   const test = tests.find(t => t.id === sel.value);
-  if (!test || test.questions.length === 0) { alert('Este teste ainda não tem questões cadastradas.'); return; }
+  if (!test || test.questions.length === 0) { await appAlert('Este teste ainda não tem questões cadastradas.'); return; }
   studentQuestions = test.questions;
   studentIndex = 0;
   studentScore = 0;
@@ -1598,6 +1753,7 @@ onAuthStateChanged(auth, (user) => {
   } else {
     showRole(null);
   }
+  hideBootLoader();
 });
 
 } // startApp
