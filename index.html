@@ -45,6 +45,8 @@
     --blue: #74A9B8;
     --wrong: #C3694A;
     --wrong-rgb: 195, 105, 74;
+    --correct: #7FB069;
+    --correct-rgb: 127, 176, 105;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-pill: 999px;
@@ -65,6 +67,8 @@
     --blue: #2E6E7E;
     --wrong: #A14A30;
     --wrong-rgb: 161, 74, 48;
+    --correct: #4F8A3D;
+    --correct-rgb: 79, 138, 61;
     --shadow-lift: 0 1px 0 rgba(255,255,255,0.6) inset, 0 8px 20px -14px rgba(35,50,42,0.25);
   }
 
@@ -120,7 +124,7 @@
   .overlay.show { display: block; }
 
   nav.side {
-    width: 272px;
+    width: 300px;
     flex-shrink: 0;
     background: var(--surface);
     border-right: 1px solid var(--line);
@@ -188,7 +192,7 @@
   main::before {
     content: '';
     position: fixed;
-    inset: 0; left: 272px;
+    inset: 0; left: 300px;
     background-image:
       linear-gradient(var(--line) 1px, transparent 1px),
       linear-gradient(90deg, var(--line) 1px, transparent 1px);
@@ -294,11 +298,11 @@
   }
   .student-alt:hover:not(:disabled) { border-color: var(--chalk-dim); }
   .student-alt .letter-badge { margin: 0; }
-  .student-alt.correct { border-color: var(--yellow); background: rgba(231,195,104,0.16); }
-  .student-alt.wrong { border-color: var(--wrong); background: rgba(195,105,74,0.16); }
+  .student-alt.correct { border-color: var(--correct); background: rgba(var(--correct-rgb), 0.16); }
+  .student-alt.wrong { border-color: var(--wrong); background: rgba(var(--wrong-rgb), 0.16); }
 
   .student-feedback { margin-top: 18px; font-size: 0.95rem; font-weight: 600; }
-  .student-feedback.correct { color: var(--yellow); }
+  .student-feedback.correct { color: var(--correct); }
   .student-feedback.wrong { color: var(--wrong); }
 
   .student-summary { text-align: center; }
