@@ -1245,9 +1245,35 @@ function escapeHtml(s) {
 }
 function autoLatex(s) {
   if (!s) return s;
-  if (s.includes('$')) return s;
-  if (/\\[a-zA-Z]+/.test(s)) return '$' + s + '$';
-  return s;
+  if (s.includes('$')) return s; // usuário já delimitou manualmente com $...$
+
+  // só entra em ação se houver algo que pareça matemática (comando LaTeX, expoente ou índice)
+  if (!/\\[a-zA-Z]+|\^|_/.test(s)) return s;
+
+  const parts = s.split(/(\s+)/); // alterna: palavra, espaço, palavra, espaço...
+  const isMathWord = (w) => /\\[a-zA-Z]|[\^_]/.test(w) || /^[-+*/=().\d]+$/.test(w);
+
+  let out = '';
+  let i = 0;
+  while (i < parts.length) {
+    const part = parts[i];
+    const isSpace = /^\s+$/.test(part);
+    if (!isSpace && part && isMathWord(part)) {
+      // agrupa palavras matemáticas consecutivas (separadas só por espaço) num único $...$
+      let group = part;
+      let j = i + 1;
+      while (j + 1 < parts.length && /^\s+$/.test(parts[j]) && isMathWord(parts[j + 1])) {
+        group += parts[j] + parts[j + 1];
+        j += 2;
+      }
+      out += '$' + group + '$';
+      i = j;
+    } else {
+      out += part;
+      i++;
+    }
+  }
+  return out;
 }
 
 document.getElementById('q-text').addEventListener('input', (e) => {
