@@ -456,8 +456,30 @@
     border-radius: var(--radius-sm); padding: 7px 14px; margin-right: 12px;
   }
   input[type=file]::file-selector-button:hover { border-color: var(--chalk-dim); }
-  .present-question-image { max-width: 100%; max-height: 260px; border-radius: var(--radius-sm); display: block; margin: 0 auto 24px; object-fit: contain; }
-  .present-stage.stage-immersive .present-question-image { max-height: 34vh; }
+  .present-body-layout { display: flex; flex-direction: column; gap: 22px; }
+  .present-text-col { min-width: 0; }
+  .present-image-frame {
+    align-self: center;
+    max-width: 100%;
+    padding: 10px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+  }
+  .present-question-image { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; object-fit: contain; }
+
+  .present-stage.stage-immersive .present-body-layout {
+    flex-direction: row;
+    align-items: center;
+    gap: 4vw;
+  }
+  .present-stage.stage-immersive .present-text-col { flex: 1 1 56%; min-width: 0; }
+  .present-stage.stage-immersive .present-image-frame {
+    flex: 1 1 40%;
+    padding: 1.4vw;
+    border-width: 2px;
+  }
+  .present-stage.stage-immersive .present-question-image { max-height: 42vh; width: 100%; }
   .q-actions button { font-size: 0.78rem; padding: 8px 12px; margin-left: 6px; min-height: 38px; }
   .empty-note { color: var(--chalk-dim); padding: 20px 0; font-weight: 400; }
 
@@ -528,8 +550,23 @@
     position: fixed;
     inset: 0;
     z-index: 200;
+    box-sizing: border-box;
+    /* modo apresentação: sempre "papel" branco com moldura bege, independente do tema do app */
+    --bg: #FFFFFF;
+    --surface: #FFFFFF;
+    --surface-2: #F7F1E3;
+    --line: #D9C9A0;
+    --chalk: #2A2A28;
+    --chalk-dim: #78735F;
+    --yellow: #B4842A;
+    --yellow-ink: #FFFFFF;
+    --blue: #2E6E7E;
+    --wrong: #A14A30;
+    --wrong-rgb: 161, 74, 48;
+    --correct: #4F8A3D;
+    --correct-rgb: 79, 138, 61;
     background: var(--bg);
-    border: none;
+    border: 14px solid var(--line);
     border-radius: 0;
     padding: 6vh 8vw;
     display: flex;
@@ -600,6 +637,9 @@
     .present-stage.stage-immersive .present-alt { font-size: 3.2vw; }
     .present-stage.stage-immersive .present-timer { font-size: 1.8rem; padding: 12px 22px; }
     .present-fs-nav button { padding: 14px 20px; font-size: 1rem; min-height: 50px; }
+    .present-stage.stage-immersive .present-body-layout { flex-direction: column; }
+    .present-stage.stage-immersive .present-image-frame { flex: none; width: 100%; }
+    .present-stage.stage-immersive .present-question-image { max-height: 28vh; }
   }
 
   /* folha de respostas / print */
@@ -1609,15 +1649,19 @@ function renderPresent() {
   stage.innerHTML = `
     <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — ${escapeHtml(test.name)}</div>
     ${hasTimer ? `<div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div>` : ''}
-    ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão">` : ''}
-    <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
-    <div class="present-alts">
-      ${q.options.map(o => `
-        <div class="present-alt">
-          <span class="letter-badge">${o.letter}</span>
-          <span>${escapeHtml(autoLatex(o.text))}</span>
+    <div class="present-body-layout">
+      <div class="present-text-col">
+        <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
+        <div class="present-alts">
+          ${q.options.map(o => `
+            <div class="present-alt">
+              <span class="letter-badge">${o.letter}</span>
+              <span>${escapeHtml(autoLatex(o.text))}</span>
+            </div>
+          `).join('')}
         </div>
-      `).join('')}
+      </div>
+      ${q.imageUrl ? `<div class="present-image-frame"><img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão"></div>` : ''}
     </div>
   `;
   btnNext.textContent = isLast ? 'Concluir →' : 'Próxima →';
@@ -1840,7 +1884,7 @@ function renderStudentQuestion() {
   const q = studentQuestions[studentIndex];
   stage.innerHTML = `
     <div class="present-counter">Questão ${studentIndex + 1} de ${studentQuestions.length}</div>
-    ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão">` : ''}
+    ${q.imageUrl ? `<div class="present-image-frame"><img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão"></div>` : ''}
     <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     <div class="present-alts">
       ${q.options.map(o => `
