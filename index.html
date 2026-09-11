@@ -445,6 +445,19 @@
   .q-list-item .q-alts { font-size: 0.9rem; color: var(--chalk-dim); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
   .q-list-item .q-alts .correct { color: var(--yellow); font-weight: 500; }
   .q-time-tag { font-size: 0.75rem; color: var(--blue); margin-top: 6px; font-weight: 500; }
+  .q-thumb { max-width: 180px; max-height: 120px; border-radius: var(--radius-sm); border: 1px solid var(--line); display: block; margin: 8px 0; object-fit: contain; }
+  input[type=file] {
+    width: 100%; background: var(--surface-2); border: 1px solid var(--line); color: var(--chalk-dim);
+    padding: 10px 12px; border-radius: var(--radius-sm); font-family: var(--font); font-size: 0.9rem;
+  }
+  input[type=file]::file-selector-button {
+    font-family: var(--font); font-weight: 500; cursor: pointer;
+    background: var(--surface); border: 1px solid var(--line); color: var(--chalk);
+    border-radius: var(--radius-sm); padding: 7px 14px; margin-right: 12px;
+  }
+  input[type=file]::file-selector-button:hover { border-color: var(--chalk-dim); }
+  .present-question-image { max-width: 100%; max-height: 260px; border-radius: var(--radius-sm); display: block; margin: 0 auto 24px; object-fit: contain; }
+  .present-stage.stage-immersive .present-question-image { max-height: 34vh; }
   .q-actions button { font-size: 0.78rem; padding: 8px 12px; margin-left: 6px; min-height: 38px; }
   .empty-note { color: var(--chalk-dim); padding: 20px 0; font-weight: 400; }
 
@@ -781,6 +794,16 @@
           <input type="number" id="q-time" placeholder="Sem limite de tempo" min="1" style="max-width:240px;">
         </div>
 
+        <div class="field">
+          <label>Imagem (opcional)</label>
+          <div id="q-image-preview-wrap" style="display:none; margin-bottom:10px;">
+            <img id="q-image-preview" style="max-width:220px; max-height:160px; border-radius:var(--radius-sm); border:1px solid var(--line); display:block;">
+            <button type="button" class="btn-ghost" id="btn-remove-image" style="margin-top:8px; font-size:0.78rem; padding:8px 12px; min-height:0;">Remover imagem</button>
+          </div>
+          <input type="file" id="q-image-input" accept="image/*">
+          <div id="q-image-status" style="font-size:0.78rem; color:var(--chalk-dim); margin-top:6px;"></div>
+        </div>
+
         <label>Alternativas (marque a correta)</label>
         <div id="alt-rows"></div>
 
@@ -1049,6 +1072,23 @@ const testsCol = collection(db, 'tests');
 const auth = getAuth(app);
 setPersistence(auth, browserSessionPersistence).catch(() => {});
 
+// Cloudinary: usado para armazenar as imagens das questões (upload direto do navegador, sem servidor próprio).
+const CLOUDINARY_CLOUD_NAME = 'dufywhkji';
+const CLOUDINARY_UPLOAD_PRESET = 'quiz_de_papel_unsigned';
+
+async function uploadImageToCloudinary(file) {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('upload_preset', CLOUDINARY_UPLOAD_PRESET);
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`, {
+    method: 'POST',
+    body: formData,
+  });
+  if (!res.ok) throw new Error('Falha no upload para o Cloudinary');
+  const data = await res.json();
+  return { url: data.secure_url, publicId: data.public_id };
+}
+
 // e-mail fixo usado só como identificador da conta do(a) professor(a) no Firebase Authentication.
 // Crie esse usuário em Firebase Console → Authentication → Users, com a senha desejada.
 const TEACHER_EMAIL = 'professor@quizdepapel.app';
@@ -1282,6 +1322,28 @@ document.getElementById('q-text').addEventListener('input', (e) => {
   typeset(preview);
 });
 
+let pendingImageFile = null;
+let pendingImageRemoved = false;
+
+document.getElementById('q-image-input').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  pendingImageFile = file;
+  pendingImageRemoved = false;
+  const previewImg = document.getElementById('q-image-preview');
+  previewImg.src = URL.createObjectURL(file);
+  document.getElementById('q-image-preview-wrap').style.display = 'block';
+  document.getElementById('q-image-status').textContent = '';
+});
+
+document.getElementById('btn-remove-image').addEventListener('click', () => {
+  pendingImageFile = null;
+  pendingImageRemoved = true;
+  document.getElementById('q-image-input').value = '';
+  document.getElementById('q-image-preview-wrap').style.display = 'none';
+  document.getElementById('q-image-status').textContent = '';
+});
+
 document.getElementById('btn-save-q').addEventListener('click', async () => {
   const text = document.getElementById('q-text').value.trim();
   if (!text) { await appAlert('Digite o enunciado da questão.'); return; }
@@ -1300,14 +1362,40 @@ document.getElementById('btn-save-q').addEventListener('click', async () => {
 
   const test = getCurrentTest();
   if (!test) return;
+
+  const existing = editingId ? test.questions.find(q => q.id === editingId) : null;
+  let imageUrl = existing ? (existing.imageUrl || null) : null;
+
+  const statusEl = document.getElementById('q-image-status');
+  const saveBtn = document.getElementById('btn-save-q');
+
+  if (pendingImageFile) {
+    saveBtn.disabled = true;
+    statusEl.textContent = 'Enviando imagem…';
+    try {
+      const uploaded = await uploadImageToCloudinary(pendingImageFile);
+      imageUrl = uploaded.url;
+    } catch (err) {
+      saveBtn.disabled = false;
+      statusEl.textContent = '';
+      await appAlert('Não foi possível enviar a imagem. Verifique sua conexão e tente novamente.');
+      return;
+    }
+  } else if (pendingImageRemoved) {
+    imageUrl = null;
+  }
+
   let newQuestions;
   if (editingId) {
-    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value, timeLimit } : q);
+    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value, timeLimit, imageUrl } : q);
   } else {
-    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value, timeLimit }];
+    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value, timeLimit, imageUrl }];
   }
 
   await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
+
+  saveBtn.disabled = false;
+  statusEl.textContent = '';
   resetEditor();
 });
 
@@ -1315,9 +1403,14 @@ document.getElementById('btn-cancel-edit').addEventListener('click', resetEditor
 
 function resetEditor() {
   editingId = null;
+  pendingImageFile = null;
+  pendingImageRemoved = false;
   document.getElementById('q-text').value = '';
   document.getElementById('q-preview').textContent = '';
   document.getElementById('q-time').value = '';
+  document.getElementById('q-image-input').value = '';
+  document.getElementById('q-image-preview-wrap').style.display = 'none';
+  document.getElementById('q-image-status').textContent = '';
   buildAltRows();
   document.getElementById('btn-save-q').textContent = 'Adicionar questão';
   document.getElementById('btn-cancel-edit').style.display = 'none';
@@ -1342,6 +1435,7 @@ function renderQList() {
         </span>
       </div>
       <div class="q-text">${escapeHtml(autoLatex(q.text))}</div>
+      ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="q-thumb" alt="Imagem da questão">` : ''}
       <div class="q-time-tag">⏱ ${q.timeLimit ? q.timeLimit + 's por questão' : 'Sem tempo limite'}</div>
       <div class="q-alts">
         ${q.options.map(o => `<div class="${o.letter === q.correct ? 'correct' : ''}">${o.letter}) ${escapeHtml(autoLatex(o.text))}</div>`).join('')}
@@ -1358,10 +1452,20 @@ function editQuestion(id) {
   const q = test.questions.find(q => q.id === id);
   if (!q) return;
   editingId = id;
+  pendingImageFile = null;
+  pendingImageRemoved = false;
   document.getElementById('q-text').value = q.text;
   document.getElementById('q-preview').textContent = autoLatex(q.text);
   typeset(document.getElementById('q-preview'));
   document.getElementById('q-time').value = q.timeLimit || '';
+  document.getElementById('q-image-input').value = '';
+  if (q.imageUrl) {
+    document.getElementById('q-image-preview').src = q.imageUrl;
+    document.getElementById('q-image-preview-wrap').style.display = 'block';
+  } else {
+    document.getElementById('q-image-preview-wrap').style.display = 'none';
+  }
+  document.getElementById('q-image-status').textContent = '';
   buildAltRows(q);
   document.getElementById('btn-save-q').textContent = 'Salvar alterações';
   document.getElementById('btn-cancel-edit').style.display = 'inline-block';
@@ -1505,6 +1609,7 @@ function renderPresent() {
   stage.innerHTML = `
     <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — ${escapeHtml(test.name)}</div>
     ${hasTimer ? `<div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div>` : ''}
+    ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão">` : ''}
     <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     <div class="present-alts">
       ${q.options.map(o => `
@@ -1735,6 +1840,7 @@ function renderStudentQuestion() {
   const q = studentQuestions[studentIndex];
   stage.innerHTML = `
     <div class="present-counter">Questão ${studentIndex + 1} de ${studentQuestions.length}</div>
+    ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão">` : ''}
     <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     <div class="present-alts">
       ${q.options.map(o => `
