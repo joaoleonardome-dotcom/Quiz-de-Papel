@@ -47,6 +47,7 @@
     --wrong-rgb: 195, 105, 74;
     --correct: #7FB069;
     --correct-rgb: 127, 176, 105;
+    --beige: #D8C9A3;
     --radius-sm: 6px;
     --radius-md: 10px;
     --radius-pill: 999px;
@@ -69,6 +70,7 @@
     --wrong-rgb: 161, 74, 48;
     --correct: #4F8A3D;
     --correct-rgb: 79, 138, 61;
+    --beige: #A9895A;
     --shadow-lift: 0 1px 0 rgba(255,255,255,0.6) inset, 0 8px 20px -14px rgba(35,50,42,0.25);
   }
 
@@ -497,6 +499,7 @@
     box-shadow: var(--shadow-lift);
   }
   .present-counter { color: var(--chalk-dim); font-size: 0.77rem; margin-bottom: 18px; letter-spacing: 0.01em; }
+  .present-test-name { color: var(--beige); font-weight: 600; }
   .present-question { font-family: 'Arial Light', 'Helvetica Neue', Arial, sans-serif; font-size: 1.9rem; line-height: 1.4; margin-bottom: 32px; font-weight: 300; }
   .present-alts { display: grid; gap: 15px; }
   .present-alt { display: flex; gap: 15px; align-items: flex-start; font-size: 1.33rem; font-weight: 400; }
@@ -535,17 +538,28 @@
 
   .gabarito-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 14px;
     margin-top: 16px;
   }
   .gabarito-item {
-    display: flex; align-items: baseline; gap: 10px;
+    display: flex; flex-direction: column; gap: 8px;
     background: var(--surface-2); border: 1px solid var(--line); border-radius: var(--radius-sm);
     padding: 12px 16px;
   }
+  .gabarito-item-top { display: flex; align-items: baseline; gap: 10px; }
   .gab-num { color: var(--chalk-dim); font-size: 1.5rem; flex-shrink: 0; }
   .gab-letter { font-family: var(--font-display); color: var(--yellow); font-weight: 600; font-size: 2.4rem; line-height: 1; }
+  .gab-value {
+    font-family: var(--font-display);
+    font-style: italic;
+    color: var(--chalk-dim);
+    font-size: 1rem;
+    line-height: 1.3;
+    padding-top: 8px;
+    border-top: 1px dashed var(--line);
+    overflow-wrap: break-word;
+  }
 
   .present-stage.stage-immersive {
     position: fixed;
@@ -566,6 +580,7 @@
     --wrong-rgb: 161, 74, 48;
     --correct: #4F8A3D;
     --correct-rgb: 79, 138, 61;
+    --beige: #A9895A;
     background: var(--bg);
     border: 14px solid var(--line);
     border-radius: 0;
@@ -582,9 +597,10 @@
   .present-stage.stage-immersive .present-alt .letter-badge { width: 3vw; height: 3vw; font-size: 1.6vw; }
   .present-stage.stage-immersive .present-intro-title { font-size: 5vw; }
   .present-stage.stage-immersive .present-chalk-rule { width: 22vw; margin-top: 2.5vh; }
-  .present-stage.stage-immersive .gabarito-grid { grid-template-columns: repeat(auto-fill, minmax(15vw, 1fr)); gap: 2vw; }
+  .present-stage.stage-immersive .gabarito-grid { grid-template-columns: repeat(auto-fill, minmax(16vw, 1fr)); gap: 2vw; }
   .present-stage.stage-immersive .gab-num { font-size: 2.1vw; }
   .present-stage.stage-immersive .gab-letter { font-size: 5vw; }
+  .present-stage.stage-immersive .gab-value { font-size: 1.5vw; padding-top: 1.2vw; }
 
   .present-stage.stage-immersive .present-timer {
     position: fixed;
@@ -1627,13 +1643,24 @@ function renderPresent() {
 
   if (presentState === 'gabarito') {
     stage.innerHTML = `
-      <div class="present-counter">Gabarito — ${escapeHtml(test.name)}</div>
+      <div class="present-counter">Gabarito — <span class="present-test-name">${escapeHtml(test.name)}</span></div>
       <div class="gabarito-grid">
-        ${test.questions.map((q, i) => `
-          <div class="gabarito-item"><span class="gab-num">${i + 1}.</span><span class="gab-letter">${q.correct}</span></div>
-        `).join('')}
+        ${test.questions.map((q, i) => {
+          const correctOption = q.options.find(o => o.letter === q.correct);
+          const valueText = correctOption ? escapeHtml(autoLatex(correctOption.text)) : '';
+          return `
+          <div class="gabarito-item">
+            <div class="gabarito-item-top">
+              <span class="gab-num">${i + 1}.</span>
+              <span class="gab-letter">${q.correct}</span>
+            </div>
+            ${valueText ? `<div class="gab-value">${valueText}</div>` : ''}
+          </div>
+        `;
+        }).join('')}
       </div>
     `;
+    typeset(stage);
     btnNext.textContent = 'Próxima →';
     btnNext.disabled = true;
     btnNextFs.textContent = 'Próxima →';
@@ -1648,7 +1675,7 @@ function renderPresent() {
   const isLast = presentIndex === test.questions.length - 1;
   const hasTimer = !!(q.timeLimit && q.timeLimit > 0);
   stage.innerHTML = `
-    <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — ${escapeHtml(test.name)}</div>
+    <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — <span class="present-test-name">${escapeHtml(test.name)}</span></div>
     ${hasTimer ? `<div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div>` : ''}
     <div class="present-body-layout">
       <div class="present-text-col">
