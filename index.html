@@ -819,6 +819,7 @@
         <button id="btn-rename-test" title="Renomear">Renomear</button>
         <button id="btn-delete-test" title="Excluir">Excluir</button>
       </div>
+      <button class="btn-ghost" id="btn-copy-link" style="width:100%; margin-top:6px;">🔗 Copiar link para alunos</button>
     </div>
 
     <button class="tab-btn active" data-tab="questoes">
@@ -892,7 +893,7 @@
     <div class="view" id="view-apresentacao">
       <h1 class="page-title">Apresentação</h1>
       <p class="page-test-tag" id="tag-apresentacao"></p>
-      <p class="page-sub">Projete esta tela. Navegue pelas questões e revele o gabarito no final.</p>
+      <p class="page-sub">Projete esta tela. Navegue pelas questões e revele o gabarito no final. Dica: use as setas ← → ou a barra de espaço do teclado para navegar.</p>
 
       <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--chalk-dim); cursor:pointer; margin-bottom:20px;">
         <input type="checkbox" id="present-shuffle" style="width:auto;">
@@ -1178,6 +1179,12 @@ let tests = [];
 let currentTestId = localStorage.getItem('mathquiz_current_test');
 let editingId = null;
 let qSearchTerm = '';
+let studentQuestions = [];
+let studentIndex = 0;
+let studentScore = 0;
+let studentAnswered = false;
+let studentShuffleOn = false;
+let studentWrongQuestions = [];
 let presentIndex = 0;
 let presentState = 'intro'; // 'intro' | 'question' | 'end' | 'gabarito'
 let presentTimerId = null;
@@ -1187,6 +1194,24 @@ function setSyncStatus(state, text) {
   const el = document.getElementById('sync-status');
   el.className = 'sync-status ' + state;
   document.getElementById('sync-text').textContent = text;
+}
+
+/* ---------- link direto para um teste (?teste=ID) ---------- */
+const urlTestId = new URLSearchParams(location.search).get('teste');
+let autoStartHandled = false;
+function tryAutoStartFromLink() {
+  if (autoStartHandled || !urlTestId) return;
+  if (auth.currentUser) return; // não interfere com uma sessão de professor já logada
+  const test = tests.find(t => t.id === urlTestId);
+  if (!test) return; // dados ainda não chegaram, ou o id do link é inválido
+  autoStartHandled = true;
+  localStorage.setItem('mathquiz_role', 'student');
+  showRole('student');
+  if (test.questions.length > 0) {
+    document.getElementById('student-test-select').value = test.id;
+    studentShuffleOn = false;
+    startStudentRun(test.questions);
+  }
 }
 
 onSnapshot(testsCol, async (snapshot) => {
@@ -1207,6 +1232,7 @@ onSnapshot(testsCol, async (snapshot) => {
   renderQList();
   renderPresent();
   renderStudentPicker();
+  tryAutoStartFromLink();
 }, (err) => {
   console.error(err);
   setSyncStatus('error', 'Erro de conexão — veja o console');
@@ -1298,6 +1324,22 @@ document.getElementById('btn-delete-test').addEventListener('click', async () =>
   currentTestId = null;
 });
 
+document.getElementById('btn-copy-link').addEventListener('click', async () => {
+  const t = getCurrentTest();
+  if (!t) return;
+  const link = `${location.origin}${location.pathname}?teste=${t.id}`;
+  const btn = document.getElementById('btn-copy-link');
+  const original = btn.textContent;
+  try {
+    await navigator.clipboard.writeText(link);
+    btn.textContent = '✓ Link copiado!';
+  } catch (err) {
+    await appPrompt('Copie o link abaixo:', link, { title: 'Link para os alunos', confirmLabel: 'Fechar' });
+    return;
+  }
+  setTimeout(() => { btn.textContent = original; }, 1800);
+});
+
 /* ---------- navegação por abas ---------- */
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -1312,6 +1354,17 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     sideNav.classList.remove('open');
     overlay.classList.remove('show');
   });
+});
+
+document.addEventListener('keydown', (e) => {
+  const tag = (document.activeElement && document.activeElement.tagName) || '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  const apresentacaoActive = document.getElementById('view-apresentacao') &&
+    document.getElementById('view-apresentacao').classList.contains('active') &&
+    document.getElementById('app-root').style.display !== 'none';
+  if (!apresentacaoActive) return;
+  if (e.key === 'ArrowRight' || e.key === ' ' || e.code === 'Space') { e.preventDefault(); goNext(); }
+  else if (e.key === 'ArrowLeft') { e.preventDefault(); goPrev(); }
 });
 
 function enterImmersive() {
@@ -1934,13 +1987,6 @@ document.getElementById('btn-teacher-exit').addEventListener('click', exitToRole
 document.getElementById('btn-student-exit').addEventListener('click', exitToRoleSelect);
 
 /* ---------- área do aluno (autoestudo) ---------- */
-let studentQuestions = [];
-let studentIndex = 0;
-let studentScore = 0;
-let studentAnswered = false;
-let studentShuffleOn = false;
-let studentWrongQuestions = [];
-
 function renderStudentPicker() {
   const sel = document.getElementById('student-test-select');
   if (!sel) return;
@@ -2063,13 +2109,16 @@ function renderStudentQuestion() {
    Isso acontece de forma assíncrona (onAuthStateChanged), então a rota inicial
    é definida ali, não aqui. */
 onAuthStateChanged(auth, (user) => {
-  if (user) {
-    showRole('teacher');
-  } else if (localStorage.getItem('mathquiz_role') === 'student') {
-    showRole('student');
-  } else {
-    showRole(null);
+  if (!autoStartHandled) {
+    if (user) {
+      showRole('teacher');
+    } else if (localStorage.getItem('mathquiz_role') === 'student') {
+      showRole('student');
+    } else {
+      showRole(null);
+    }
   }
+  tryAutoStartFromLink();
   hideBootLoader();
 });
 
