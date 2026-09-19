@@ -157,9 +157,9 @@
     padding: 11px 10px; border-radius: var(--radius-sm); font-family: var(--font); font-weight: 400; font-size: 0.9rem;
     margin-bottom: 8px;
   }
-  .test-picker-actions { display: flex; gap: 6px; }
+  .test-picker-actions { display: flex; flex-wrap: wrap; gap: 6px; }
   .test-picker-actions button {
-    flex: 1; font-size: 0.72rem; padding: 9px 4px; background: none; border: 1px solid var(--line);
+    flex: 1 1 calc(50% - 6px); font-size: 0.72rem; padding: 9px 4px; background: none; border: 1px solid var(--line);
     color: var(--chalk-dim); border-radius: var(--radius-sm);
   }
   .test-picker-actions button:hover { color: var(--chalk); border-color: var(--chalk-dim); }
@@ -308,6 +308,14 @@
   .student-feedback.wrong { color: var(--wrong); }
 
   .student-summary { text-align: center; }
+  .student-progress-track {
+    height: 8px; background: var(--surface-2); border-radius: var(--radius-pill);
+    overflow: hidden; margin-bottom: 18px;
+  }
+  .student-progress-fill {
+    height: 100%; background: var(--yellow); border-radius: var(--radius-pill);
+    width: 0%; transition: width 0.3s ease;
+  }
   .student-score { font-family: var(--font-display); font-size: 3.4rem; font-weight: 600; color: var(--yellow); line-height: 1; }
   .student-score-label { color: var(--chalk-dim); margin-top: 10px; }
 
@@ -807,6 +815,7 @@
       <select id="test-select"></select>
       <div class="test-picker-actions">
         <button id="btn-new-test" title="Novo teste">+ Novo</button>
+        <button id="btn-duplicate-test" title="Duplicar teste">Duplicar</button>
         <button id="btn-rename-test" title="Renomear">Renomear</button>
         <button id="btn-delete-test" title="Excluir">Excluir</button>
       </div>
@@ -873,6 +882,9 @@
       <h2 style="font-size:0.95rem; font-weight:400; color: var(--chalk-dim); margin: 28px 0 12px;">
         <span id="q-count">0</span> questão(ões) cadastrada(s) neste teste
       </h2>
+      <div class="field" style="max-width:360px;">
+        <input type="text" id="q-search" placeholder="🔎 Buscar por palavra-chave nas questões…">
+      </div>
       <div id="q-list"></div>
     </div>
 
@@ -881,6 +893,11 @@
       <h1 class="page-title">Apresentação</h1>
       <p class="page-test-tag" id="tag-apresentacao"></p>
       <p class="page-sub">Projete esta tela. Navegue pelas questões e revele o gabarito no final.</p>
+
+      <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--chalk-dim); cursor:pointer; margin-bottom:20px;">
+        <input type="checkbox" id="present-shuffle" style="width:auto;">
+        🔀 Embaralhar ordem das alternativas
+      </label>
 
       <div id="present-empty" class="empty-note">Cadastre ao menos uma questão para iniciar a apresentação.</div>
 
@@ -959,11 +976,18 @@
           <label>Teste / conteúdo</label>
           <select id="student-test-select"></select>
         </div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--chalk-dim); cursor:pointer; margin-bottom:18px;">
+          <input type="checkbox" id="student-shuffle" style="width:auto;">
+          🔀 Embaralhar ordem das alternativas
+        </label>
         <button class="btn-primary" id="btn-student-start" style="width:100%;">Começar ▶</button>
       </div>
     </div>
 
     <div id="student-quiz" style="display:none;">
+      <div class="student-progress-track">
+        <div class="student-progress-fill" id="student-progress-fill"></div>
+      </div>
       <div class="present-stage" id="student-stage">
         <div id="student-stage-content"></div>
       </div>
@@ -1153,6 +1177,7 @@ const TEACHER_EMAIL = 'professor@quizdepapel.app';
 let tests = [];
 let currentTestId = localStorage.getItem('mathquiz_current_test');
 let editingId = null;
+let qSearchTerm = '';
 let presentIndex = 0;
 let presentState = 'intro'; // 'intro' | 'question' | 'end' | 'gabarito'
 let presentTimerId = null;
@@ -1238,6 +1263,19 @@ document.getElementById('btn-new-test').addEventListener('click', async () => {
   const name = await appPrompt('Nome do novo teste (ex: Frações — 7º Ano):', '', { title: 'Novo teste', confirmLabel: 'Criar' });
   if (!name) return;
   const ref = await addDoc(testsCol, { name: name.trim(), questions: [], createdAt: serverTimestamp() });
+  currentTestId = ref.id;
+  persistCurrentTestId();
+});
+
+document.getElementById('btn-duplicate-test').addEventListener('click', async () => {
+  const t = getCurrentTest();
+  if (!t) return;
+  const suggested = `${t.name} (cópia)`;
+  const name = await appPrompt('Nome do teste duplicado:', suggested, { title: 'Duplicar teste', confirmLabel: 'Duplicar' });
+  if (!name) return;
+  // cópia profunda das questões, com novos ids para não colidir com o teste original
+  const clonedQuestions = t.questions.map(q => ({ ...q, id: Date.now() + Math.floor(Math.random() * 100000) }));
+  const ref = await addDoc(testsCol, { name: name.trim(), questions: clonedQuestions, createdAt: serverTimestamp() });
   currentTestId = ref.id;
   persistCurrentTestId();
 });
@@ -1337,6 +1375,14 @@ function buildAltRows(existing) {
 buildAltRows();
 
 function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;'); }
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
 function escapeHtml(s) {
   return (s || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 }
@@ -1473,6 +1519,14 @@ function resetEditor() {
   document.getElementById('btn-cancel-edit').style.display = 'none';
 }
 
+function normalizeSearch(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+document.getElementById('q-search').addEventListener('input', (e) => {
+  qSearchTerm = e.target.value;
+  renderQList();
+});
+
 function renderQList() {
   const test = getCurrentTest();
   const list = document.getElementById('q-list');
@@ -1482,12 +1536,25 @@ function renderQList() {
     list.innerHTML = '<div class="empty-note">Nenhuma questão ainda neste teste. Adicione a primeira acima.</div>';
     return;
   }
-  list.innerHTML = test.questions.map((q, i) => `
+
+  const term = normalizeSearch(qSearchTerm);
+  const indexed = test.questions.map((q, i) => ({ q, i }));
+  const filtered = term
+    ? indexed.filter(({ q }) => normalizeSearch(q.text).includes(term) || q.options.some(o => normalizeSearch(o.text).includes(term)))
+    : indexed;
+
+  if (filtered.length === 0) {
+    list.innerHTML = '<div class="empty-note">Nenhuma questão encontrada para essa busca.</div>';
+    return;
+  }
+
+  list.innerHTML = filtered.map(({ q, i }) => `
     <div class="q-list-item">
       <div class="q-head">
         <span class="q-num">Questão ${i + 1}</span>
         <span class="q-actions">
           <button class="btn-ghost" data-edit="${q.id}">Editar</button>
+          <button class="btn-ghost" data-dup="${q.id}">Duplicar</button>
           <button class="btn-danger" data-del="${q.id}">Excluir</button>
         </span>
       </div>
@@ -1501,7 +1568,19 @@ function renderQList() {
   `).join('');
   list.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editQuestion(Number(b.dataset.edit))));
   list.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteQuestion(Number(b.dataset.del))));
+  list.querySelectorAll('[data-dup]').forEach(b => b.addEventListener('click', () => duplicateQuestion(Number(b.dataset.dup))));
   typeset(list);
+}
+
+async function duplicateQuestion(id) {
+  const test = getCurrentTest();
+  const q = test.questions.find(q => q.id === id);
+  if (!q) return;
+  const clone = { ...q, id: Date.now() };
+  const idx = test.questions.findIndex(qq => qq.id === id);
+  const newQuestions = [...test.questions];
+  newQuestions.splice(idx + 1, 0, clone);
+  await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
 }
 
 function editQuestion(id) {
@@ -1596,6 +1675,9 @@ document.getElementById('btn-restart').addEventListener('click', () => {
 });
 document.getElementById('btn-next-fs').addEventListener('click', goNext);
 document.getElementById('btn-prev-fs').addEventListener('click', goPrev);
+document.getElementById('present-shuffle').addEventListener('change', () => {
+  if (presentState === 'question') renderPresent();
+});
 
 function renderPresent() {
   const test = getCurrentTest();
@@ -1674,6 +1756,8 @@ function renderPresent() {
   const q = test.questions[presentIndex];
   const isLast = presentIndex === test.questions.length - 1;
   const hasTimer = !!(q.timeLimit && q.timeLimit > 0);
+  const shuffleOn = document.getElementById('present-shuffle').checked;
+  const displayOptions = shuffleOn ? shuffleArray(q.options) : q.options;
   stage.innerHTML = `
     <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — <span class="present-test-name">${escapeHtml(test.name)}</span></div>
     ${hasTimer ? `<div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div>` : ''}
@@ -1681,7 +1765,7 @@ function renderPresent() {
       <div class="present-text-col">
         <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
         <div class="present-alts">
-          ${q.options.map(o => `
+          ${displayOptions.map(o => `
             <div class="present-alt">
               <span class="letter-badge">${o.letter}</span>
               <span>${escapeHtml(autoLatex(o.text))}</span>
@@ -1854,6 +1938,8 @@ let studentQuestions = [];
 let studentIndex = 0;
 let studentScore = 0;
 let studentAnswered = false;
+let studentShuffleOn = false;
+let studentWrongQuestions = [];
 
 function renderStudentPicker() {
   const sel = document.getElementById('student-test-select');
@@ -1862,16 +1948,22 @@ function renderStudentPicker() {
   sel.innerHTML = sorted.map(t => `<option value="${t.id}">${escapeHtml(t.name)} (${t.questions.length} questões)</option>`).join('');
 }
 
+function startStudentRun(questions) {
+  studentQuestions = questions;
+  studentIndex = 0;
+  studentScore = 0;
+  studentWrongQuestions = [];
+  document.getElementById('student-picker').style.display = 'none';
+  document.getElementById('student-quiz').style.display = 'block';
+  renderStudentQuestion();
+}
+
 document.getElementById('btn-student-start').addEventListener('click', async () => {
   const sel = document.getElementById('student-test-select');
   const test = tests.find(t => t.id === sel.value);
   if (!test || test.questions.length === 0) { await appAlert('Este teste ainda não tem questões cadastradas.'); return; }
-  studentQuestions = test.questions;
-  studentIndex = 0;
-  studentScore = 0;
-  document.getElementById('student-picker').style.display = 'none';
-  document.getElementById('student-quiz').style.display = 'block';
-  renderStudentQuestion();
+  studentShuffleOn = document.getElementById('student-shuffle').checked;
+  startStudentRun(test.questions);
 });
 
 document.getElementById('btn-student-back').addEventListener('click', () => {
@@ -1886,21 +1978,36 @@ document.getElementById('btn-student-next').addEventListener('click', () => {
   renderStudentQuestion();
 });
 
+function updateStudentProgress() {
+  const fill = document.getElementById('student-progress-fill');
+  if (!fill) return;
+  const total = studentQuestions.length;
+  const done = Math.min(studentIndex, total);
+  fill.style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
+}
+
 function renderStudentQuestion() {
   const stage = document.getElementById('student-stage-content');
   const nextBtn = document.getElementById('btn-student-next');
+  updateStudentProgress();
 
   if (studentIndex >= studentQuestions.length) {
     const pct = studentQuestions.length ? Math.round((studentScore / studentQuestions.length) * 100) : 0;
+    const wrongCount = studentWrongQuestions.length;
     stage.innerHTML = `
       <div class="student-summary">
         <div class="present-counter">Resultado</div>
         <div class="student-score">${studentScore} / ${studentQuestions.length}</div>
         <div class="student-score-label">${pct}% de acertos</div>
+        ${wrongCount > 0 ? `<button class="btn-primary" id="btn-review-wrong" style="margin-top:22px;">Revisar ${wrongCount} questão(ões) errada(s) →</button>` : ''}
       </div>
     `;
     nextBtn.style.display = 'none';
     typeset(stage);
+    const reviewBtn = document.getElementById('btn-review-wrong');
+    if (reviewBtn) {
+      reviewBtn.addEventListener('click', () => startStudentRun(studentWrongQuestions));
+    }
     return;
   }
 
@@ -1910,12 +2017,13 @@ function renderStudentQuestion() {
   studentAnswered = false;
 
   const q = studentQuestions[studentIndex];
+  const displayOptions = studentShuffleOn ? shuffleArray(q.options) : q.options;
   stage.innerHTML = `
     <div class="present-counter">Questão ${studentIndex + 1} de ${studentQuestions.length}</div>
     ${q.imageUrl ? `<div class="present-image-frame"><img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão"></div>` : ''}
     <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     <div class="present-alts">
-      ${q.options.map(o => `
+      ${displayOptions.map(o => `
         <button class="student-alt" type="button" data-letter="${o.letter}" data-correct="${o.letter === q.correct}">
           <span class="letter-badge">${o.letter}</span>
           <span>${escapeHtml(autoLatex(o.text))}</span>
@@ -1942,6 +2050,7 @@ function renderStudentQuestion() {
         feedback.textContent = 'Certinho! ✅';
         feedback.className = 'student-feedback correct';
       } else {
+        studentWrongQuestions.push(q);
         feedback.textContent = 'Não foi dessa vez — a resposta certa está marcada acima.';
         feedback.className = 'student-feedback wrong';
       }
