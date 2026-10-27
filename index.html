@@ -478,7 +478,40 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
   }
-  .present-question-image { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; object-fit: contain; }
+  .present-question-image { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; object-fit: contain; cursor: zoom-in; }
+
+  /* quadro com a figura ampliada */
+  .img-lightbox {
+    position: fixed; inset: 0; z-index: 900;
+    display: flex; align-items: center; justify-content: center;
+    padding: 4vh 4vw; box-sizing: border-box;
+    background: rgba(0,0,0,0.6);
+    cursor: zoom-out;
+  }
+  .img-lightbox-card {
+    position: relative; display: flex;
+    max-width: 100%; max-height: 100%;
+    padding: 12px;
+    background: var(--surface-2);
+    border: 2px solid var(--line);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-lift);
+    cursor: default;
+  }
+  .img-lightbox-card img {
+    display: block;
+    max-width: calc(92vw - 28px); max-height: calc(92vh - 28px);
+    object-fit: contain; border-radius: 4px; background: #FFFFFF;
+  }
+  .img-lightbox-close {
+    position: absolute; top: -14px; right: -14px;
+    width: 34px; height: 34px; min-height: 0; padding: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--surface); color: var(--chalk-dim);
+    border: 1px solid var(--line); border-radius: 50%;
+    font-size: 1.1rem; line-height: 1; cursor: pointer;
+  }
+  .img-lightbox-close:hover { color: var(--chalk); border-color: var(--chalk-dim); }
 
   .present-stage.stage-immersive .present-question-box {
     width: 100%;
@@ -1392,7 +1425,51 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 });
 
+function closeImageLightbox() {
+  const box = document.getElementById('img-lightbox');
+  if (box) box.remove();
+}
+
+function openImageLightbox(src, alt) {
+  closeImageLightbox();
+  const box = document.createElement('div');
+  box.className = 'img-lightbox';
+  box.id = 'img-lightbox';
+  box.setAttribute('role', 'dialog');
+  box.setAttribute('aria-label', 'Figura ampliada');
+  const card = document.createElement('div');
+  card.className = 'img-lightbox-card';
+  const img = document.createElement('img');
+  img.src = src;
+  img.alt = alt || 'Figura ampliada';
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'img-lightbox-close';
+  closeBtn.setAttribute('aria-label', 'Fechar');
+  closeBtn.textContent = '✕';
+  card.appendChild(img);
+  card.appendChild(closeBtn);
+  box.appendChild(card);
+  box.addEventListener('click', closeImageLightbox);
+  // em tela cheia nativa só o elemento em fullscreen (e seus filhos) aparece, então o quadro entra nele
+  const host = document.fullscreenElement || document.webkitFullscreenElement || document.body;
+  host.appendChild(box);
+}
+
+document.addEventListener('click', (e) => {
+  const img = e.target.closest && e.target.closest('.present-question-image');
+  if (img) openImageLightbox(img.src, img.alt);
+});
+
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && document.getElementById('img-lightbox')) {
+    closeImageLightbox();
+    return;
+  }
+}, true);
+
+document.addEventListener('keydown', (e) => {
+  if (document.getElementById('img-lightbox')) return;
   const tag = (document.activeElement && document.activeElement.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   const apresentacaoActive = document.getElementById('view-apresentacao') &&
@@ -1774,6 +1851,7 @@ function renderPresent() {
   const empty = document.getElementById('present-empty');
   const body = document.getElementById('present-body');
   clearPresentTimer();
+  closeImageLightbox();
   if (!test || test.questions.length === 0) {
     empty.style.display = 'block'; body.style.display = 'none'; return;
   }
