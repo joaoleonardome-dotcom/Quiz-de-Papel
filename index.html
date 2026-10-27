@@ -1440,8 +1440,21 @@ function openImageLightbox(src, alt) {
   const card = document.createElement('div');
   card.className = 'img-lightbox-card';
   const img = document.createElement('img');
-  img.src = src;
   img.alt = alt || 'Figura ampliada';
+  // imagens pequenas não ampliam sozinhas: calcula a escala para ocupar o quadro, mantendo a proporção
+  img.style.visibility = 'hidden';
+  img.addEventListener('load', () => {
+    const nw = img.naturalWidth, nh = img.naturalHeight;
+    if (nw && nh) {
+      const maxW = window.innerWidth * 0.92 - 28;
+      const maxH = window.innerHeight * 0.92 - 28;
+      const scale = Math.min(maxW / nw, maxH / nh, 5);
+      img.style.width = Math.round(nw * scale) + 'px';
+      img.style.height = Math.round(nh * scale) + 'px';
+    }
+    img.style.visibility = '';
+  });
+  img.src = src;
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
   closeBtn.className = 'img-lightbox-close';
