@@ -452,6 +452,7 @@
   .q-list-item .q-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
   .q-list-item .q-num { color: var(--chalk-dim); font-size: 0.78rem; }
   .q-list-item .q-text { margin: 6px 0 8px; }
+  .q-list-item .q-discursive-tag { font-size: 0.85rem; color: var(--chalk-dim); font-style: italic; }
   .q-list-item .q-alts { font-size: 0.9rem; color: var(--chalk-dim); display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; }
   .q-list-item .q-alts .correct { color: var(--yellow); font-weight: 500; }
   .q-time-tag { font-size: 0.75rem; color: var(--blue); margin-top: 6px; font-weight: 500; }
@@ -478,6 +479,11 @@
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
   }
+  .present-no-alts-note {
+    align-self: center; text-align: center;
+    font-size: 0.95rem; color: var(--chalk-dim); font-style: italic;
+  }
+  .present-body-layout.no-alts { align-items: center; justify-content: center; }
   .present-question-image { max-width: 100%; max-height: 260px; border-radius: 4px; display: block; object-fit: contain; cursor: zoom-in; }
 
   /* quadro com a figura ampliada */
@@ -535,6 +541,9 @@
     background: transparent;
   }
   .present-stage.stage-immersive .present-question-image { max-height: 42vh; width: 100%; }
+  .present-stage.stage-immersive .present-body-layout.no-alts { justify-content: center; }
+  .present-stage.stage-immersive .present-body-layout.no-alts .present-image-frame { flex: 0 1 auto; max-width: 70%; }
+  .present-stage.stage-immersive .present-body-layout.no-alts .present-question-image { width: auto; max-width: 100%; max-height: 52vh; }
   .q-actions button { font-size: 0.78rem; padding: 8px 12px; margin-left: 6px; min-height: 38px; }
   .empty-note { color: var(--chalk-dim); padding: 20px 0; font-weight: 400; }
 
@@ -764,6 +773,7 @@
   .mini-q-row { display: flex; align-items: center; gap: 6px; font-size: 0.72rem; border-bottom: 1px dotted #bbb; padding: 5px 0; }
   .mini-q-row .qn { width: 15px; color: #333; flex-shrink: 0; }
   .mini-bubbles { display: flex; gap: 5px; flex-wrap: wrap; }
+  .mini-note { font-size: 0.6rem; color: #555; font-style: italic; }
   .mini-bubble { width: 15px; height: 15px; border-radius: 50%; border: 1px solid #333; display: flex; align-items: center; justify-content: center; font-size: 0.55rem; flex-shrink: 0; }
 
   .preview-frame {
@@ -938,8 +948,15 @@
           <div id="q-image-status" style="font-size:0.78rem; color:var(--chalk-dim); margin-top:6px;"></div>
         </div>
 
-        <label>Alternativas (marque a correta)</label>
-        <div id="alt-rows"></div>
+        <label style="display:flex; align-items:center; gap:8px; font-size:0.85rem; color:var(--chalk-dim); cursor:pointer; margin-bottom:16px;">
+          <input type="checkbox" id="q-discursive" style="width:auto;">
+          📝 Questão sem alternativas (demonstração — o aluno resolve no caderno)
+        </label>
+
+        <div id="alts-section">
+          <label>Alternativas (marque a correta)</label>
+          <div id="alt-rows"></div>
+        </div>
 
         <div class="btn-row">
           <button class="btn-primary" id="btn-save-q">Adicionar questão</button>
@@ -1553,6 +1570,12 @@ function buildAltRows(existing) {
 }
 buildAltRows();
 
+function syncDiscursiveUI() {
+  const on = document.getElementById('q-discursive').checked;
+  document.getElementById('alts-section').style.display = on ? 'none' : '';
+}
+document.getElementById('q-discursive').addEventListener('change', syncDiscursiveUI);
+
 function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;'); }
 function shuffleArray(arr) {
   const a = [...arr];
@@ -1630,14 +1653,19 @@ document.getElementById('btn-save-q').addEventListener('click', async () => {
   const text = document.getElementById('q-text').value.trim();
   if (!text) { await appAlert('Digite o enunciado da questão.'); return; }
 
-  const options = [];
-  document.querySelectorAll('.alt-input').forEach(inp => {
-    options.push({ letter: inp.dataset.letter, text: inp.value.trim() });
-  });
-  if (options.some(o => !o.text)) { await appAlert('Preencha todas as alternativas.'); return; }
+  const discursive = document.getElementById('q-discursive').checked;
+  let options = [];
+  let correct = null;
+  if (!discursive) {
+    document.querySelectorAll('.alt-input').forEach(inp => {
+      options.push({ letter: inp.dataset.letter, text: inp.value.trim() });
+    });
+    if (options.some(o => !o.text)) { await appAlert('Preencha todas as alternativas.'); return; }
 
-  const correctRadio = document.querySelector('input[name="correct-alt"]:checked');
-  if (!correctRadio) { await appAlert('Marque a alternativa correta.'); return; }
+    const correctRadio = document.querySelector('input[name="correct-alt"]:checked');
+    if (!correctRadio) { await appAlert('Marque a alternativa correta.'); return; }
+    correct = correctRadio.value;
+  }
 
   const timeRaw = document.getElementById('q-time').value;
   const timeLimit = timeRaw ? Math.max(1, parseInt(timeRaw)) : null;
@@ -1669,9 +1697,9 @@ document.getElementById('btn-save-q').addEventListener('click', async () => {
 
   let newQuestions;
   if (editingId) {
-    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct: correctRadio.value, timeLimit, imageUrl } : q);
+    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct, discursive, timeLimit, imageUrl } : q);
   } else {
-    newQuestions = [...test.questions, { id: Date.now(), text, options, correct: correctRadio.value, timeLimit, imageUrl }];
+    newQuestions = [...test.questions, { id: Date.now(), text, options, correct, discursive, timeLimit, imageUrl }];
   }
 
   await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
@@ -1694,6 +1722,8 @@ function resetEditor() {
   document.getElementById('q-image-preview-wrap').style.display = 'none';
   document.getElementById('q-image-status').textContent = '';
   buildAltRows();
+  document.getElementById('q-discursive').checked = false;
+  syncDiscursiveUI();
   document.getElementById('btn-save-q').textContent = 'Adicionar questão';
   document.getElementById('btn-cancel-edit').style.display = 'none';
 }
@@ -1740,9 +1770,11 @@ function renderQList() {
       <div class="q-text">${escapeHtml(autoLatex(q.text))}</div>
       ${q.imageUrl ? `<img src="${escapeAttr(q.imageUrl)}" class="q-thumb" alt="Imagem da questão">` : ''}
       <div class="q-time-tag">⏱ ${q.timeLimit ? q.timeLimit + 's por questão' : 'Sem tempo limite'}</div>
-      <div class="q-alts">
+      ${q.discursive
+        ? `<div class="q-discursive-tag">📝 Sem alternativas — demonstração no caderno</div>`
+        : `<div class="q-alts">
         ${q.options.map(o => `<div class="${o.letter === q.correct ? 'correct' : ''}">${o.letter}) ${escapeHtml(autoLatex(o.text))}</div>`).join('')}
-      </div>
+      </div>`}
     </div>
   `).join('');
   list.querySelectorAll('[data-edit]').forEach(b => b.addEventListener('click', () => editQuestion(Number(b.dataset.edit))));
@@ -1782,6 +1814,8 @@ function editQuestion(id) {
   }
   document.getElementById('q-image-status').textContent = '';
   buildAltRows(q);
+  document.getElementById('q-discursive').checked = q.discursive === true;
+  syncDiscursiveUI();
   document.getElementById('btn-save-q').textContent = 'Salvar alterações';
   document.getElementById('btn-cancel-edit').style.display = 'inline-block';
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -1909,13 +1943,13 @@ function renderPresent() {
       <div class="present-counter">Gabarito — <span class="present-test-name">${escapeHtml(test.name)}</span></div>
       <div class="gabarito-grid">
         ${test.questions.map((q, i) => {
-          const correctOption = q.options.find(o => o.letter === q.correct);
-          const valueText = correctOption ? escapeHtml(autoLatex(correctOption.text)) : '';
+          const correctOption = q.discursive ? null : q.options.find(o => o.letter === q.correct);
+          const valueText = q.discursive ? 'Demonstração' : (correctOption ? escapeHtml(autoLatex(correctOption.text)) : '');
           return `
           <div class="gabarito-item">
             <div class="gabarito-item-top">
               <span class="gab-num">${i + 1}.</span>
-              <span class="gab-letter">${q.correct}</span>
+              <span class="gab-letter">${q.discursive ? '—' : q.correct}</span>
             </div>
             ${valueText ? `<div class="gab-value">${valueText}</div>` : ''}
           </div>
@@ -1939,14 +1973,15 @@ function renderPresent() {
   const hasTimer = !!(q.timeLimit && q.timeLimit > 0);
   const shuffleOn = document.getElementById('present-shuffle').checked;
   const displayOptions = shuffleOn ? shuffleArray(q.options) : q.options;
+  const noAlts = q.discursive === true;
   stage.innerHTML = `
     <div class="present-counter">Questão ${presentIndex + 1} de ${test.questions.length} — <span class="present-test-name">${escapeHtml(test.name)}</span></div>
     ${hasTimer ? `<div class="present-timer-wrap" id="present-timer-wrap"><div class="present-timer" id="present-timer">⏱ <span id="present-timer-value">${q.timeLimit}</span>s</div><button type="button" class="btn-add-time" id="btn-add-time" title="Adicionar 10 segundos" aria-label="Adicionar 10 segundos">+10s</button></div>` : ''}
     <div class="present-question-box">
       <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
     </div>
-    <div class="present-body-layout">
-      <div class="present-text-col">
+    <div class="present-body-layout${noAlts ? ' no-alts' : ''}">
+      ${noAlts ? '' : `<div class="present-text-col">
         <div class="present-alts">
           ${displayOptions.map(o => `
             <div class="present-alt">
@@ -1955,7 +1990,7 @@ function renderPresent() {
             </div>
           `).join('')}
         </div>
-      </div>
+      </div>`}
       ${q.imageUrl ? `<div class="present-image-frame"><img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão"></div>` : ''}
     </div>
   `;
@@ -2036,9 +2071,11 @@ function buildSheetsHtml(test, title, meta, copies, letters) {
           ${test.questions.map((q, i) => `
             <div class="mini-q-row">
               <span class="qn">${i + 1}.</span>
-              <div class="mini-bubbles">
+              ${q.discursive
+                ? `<span class="mini-note">demonstração — resolver no caderno</span>`
+                : `<div class="mini-bubbles">
                 ${letters.map(l => `<span class="mini-bubble">${l}</span>`).join('')}
-              </div>
+              </div>`}
             </div>
           `).join('')}
         </div>
@@ -2180,13 +2217,16 @@ function renderStudentQuestion() {
   updateStudentProgress();
 
   if (studentIndex >= studentQuestions.length) {
-    const pct = studentQuestions.length ? Math.round((studentScore / studentQuestions.length) * 100) : 0;
+    const gradable = studentQuestions.filter(q => !q.discursive).length;
+    const pct = gradable ? Math.round((studentScore / gradable) * 100) : 0;
     const wrongCount = studentWrongQuestions.length;
     stage.innerHTML = `
       <div class="student-summary">
         <div class="present-counter">Resultado</div>
-        <div class="student-score">${studentScore} / ${studentQuestions.length}</div>
-        <div class="student-score-label">${pct}% de acertos</div>
+        ${gradable
+          ? `<div class="student-score">${studentScore} / ${gradable}</div>
+        <div class="student-score-label">${pct}% de acertos</div>`
+          : `<div class="student-score-label">Atividade concluída</div>`}
         ${wrongCount > 0 ? `<button class="btn-primary" id="btn-review-wrong" style="margin-top:22px;">Revisar ${wrongCount} questão(ões) errada(s) →</button>` : ''}
       </div>
     `;
@@ -2205,6 +2245,17 @@ function renderStudentQuestion() {
   studentAnswered = false;
 
   const q = studentQuestions[studentIndex];
+  if (q.discursive) {
+    stage.innerHTML = `
+      <div class="present-counter">Questão ${studentIndex + 1} de ${studentQuestions.length}</div>
+      ${q.imageUrl ? `<div class="present-image-frame"><img src="${escapeAttr(q.imageUrl)}" class="present-question-image" alt="Imagem da questão"></div>` : ''}
+      <div class="present-question">${escapeHtml(autoLatex(q.text))}</div>
+      <div class="present-no-alts-note">📝 Esta questão pede uma demonstração — resolva no seu caderno.</div>
+    `;
+    typeset(stage);
+    nextBtn.disabled = false;
+    return;
+  }
   const displayOptions = studentShuffleOn ? shuffleArray(q.options) : q.options;
   stage.innerHTML = `
     <div class="present-counter">Questão ${studentIndex + 1} de ${studentQuestions.length}</div>
