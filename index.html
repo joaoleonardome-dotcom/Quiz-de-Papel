@@ -685,10 +685,27 @@
   .present-stage.stage-immersive .present-alt .letter-badge { width: 3vw; height: 3vw; font-size: 1.6vw; }
   .present-stage.stage-immersive .present-intro-title { font-size: 5vw; }
   .present-stage.stage-immersive .present-chalk-rule { width: 22vw; margin-top: 2.5vh; }
-  .present-stage.stage-immersive .gabarito-grid { grid-template-columns: repeat(auto-fill, minmax(16vw, 1fr)); gap: 2vw; }
-  .present-stage.stage-immersive .gab-num { font-size: 2.1vw; }
-  .present-stage.stage-immersive .gab-letter { font-size: 5vw; }
-  .present-stage.stage-immersive .gab-value { font-size: 1.5vw; padding-top: 1.2vw; }
+  /* gabarito em tela cheia: tudo cabe sem rolagem. --gab-cols e --gab-rows são definidos pelo JS */
+  .present-stage.stage-immersive .gabarito-grid {
+    --gab-row-h: calc((66vh - 1.6vh * (var(--gab-rows, 3) - 1)) / var(--gab-rows, 3));
+    grid-template-columns: repeat(var(--gab-cols, 4), minmax(0, 1fr));
+    grid-auto-rows: var(--gab-row-h);
+    gap: 1.6vh 1.6vw;
+    margin-top: 1vh;
+  }
+  .present-stage.stage-immersive .gabarito-item {
+    padding: calc(var(--gab-row-h) * 0.05) calc(var(--gab-row-h) * 0.07);
+    gap: calc(var(--gab-row-h) * 0.03);
+    overflow: hidden;
+    justify-content: flex-start;
+  }
+  .present-stage.stage-immersive .gab-num { font-size: min(1.9vw, calc(var(--gab-row-h) * 0.12)); }
+  .present-stage.stage-immersive .gab-letter { font-size: min(4.6vw, calc(var(--gab-row-h) * 0.26)); }
+  .present-stage.stage-immersive .gab-value {
+    font-size: min(1.5vw, calc(var(--gab-row-h) * 0.10));
+    padding-top: calc(var(--gab-row-h) * 0.04);
+    overflow-wrap: anywhere;
+  }
 
   .present-stage.stage-immersive .present-timer-wrap {
     position: fixed;
@@ -710,7 +727,9 @@
     font-size: 1.05rem; padding: 10px 16px; min-height: 40px;
   }
   .present-stage.stage-immersive .gabarito-item .btn-solution {
-    font-size: max(0.85rem, 1.1vw); padding: 0.5vw 1vw; min-height: 0;
+    font-size: min(1.1vw, calc(var(--gab-row-h) * 0.075));
+    padding: calc(var(--gab-row-h) * 0.025) calc(var(--gab-row-h) * 0.05);
+    min-height: 0;
   }
   .present-stage.stage-immersive .present-timer.warn { color: var(--wrong); border-color: var(--wrong); background: var(--surface); }
   .present-stage.stage-immersive .present-timer.critical { color: #fff; background: var(--wrong); border-color: var(--wrong); }
@@ -2083,6 +2102,18 @@ function presentSignature(test) {
   return base;
 }
 
+// distribui o gabarito em colunas/linhas conforme a quantidade de questões e o formato da tela
+function updateGabaritoLayout() {
+  const grid = document.querySelector('#present-stage-content .gabarito-grid');
+  if (!grid) return;
+  const n = grid.children.length;
+  const aspect = window.innerWidth / Math.max(1, window.innerHeight);
+  const cols = Math.max(1, Math.min(n, 8, Math.ceil(Math.sqrt(n * aspect / 1.4))));
+  grid.style.setProperty('--gab-cols', cols);
+  grid.style.setProperty('--gab-rows', Math.ceil(n / cols));
+}
+window.addEventListener('resize', updateGabaritoLayout);
+
 function renderPresent() {
   const viewEl = document.getElementById('view-apresentacao');
   if (viewEl && !viewEl.classList.contains('active')) {
@@ -2157,6 +2188,7 @@ function renderPresent() {
         }).join('')}
       </div>
     `;
+    updateGabaritoLayout();
     typeset(stage);
     stage.querySelectorAll('[data-solution]').forEach(b => {
       b.addEventListener('click', () => openSolution(test.questions[Number(b.dataset.solution)].solutionUrl));
