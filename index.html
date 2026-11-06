@@ -27,7 +27,7 @@
 
 <script>
   window.MathJax = {
-    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']] },
+    tex: { inlineMath: [['$', '$'], ['\\(', '\\)']], displayMath: [['$$', '$$'], ['\\[', '\\]']], processEscapes: true },
     svg: { fontCache: 'global' }
   };
 </script>
@@ -377,7 +377,9 @@
     color: var(--chalk-dim);
     transition: background 0.15s ease, border-color 0.15s ease;
   }
-  .alt-row input[type=radio] { display: none; }
+  .alt-row { position: relative; }
+  .alt-row input[type=radio] { position: absolute; opacity: 0; width: 1px; height: 1px; pointer-events: none; }
+  .alt-row input[type=radio]:focus-visible + .alt-letter { outline: 2px solid var(--yellow); outline-offset: 2px; }
   .alt-row input[type=radio]:checked + .alt-letter { background: var(--yellow); border-color: var(--yellow); color: var(--yellow-ink); font-weight: 600; }
 
   .card {
@@ -1142,7 +1144,12 @@
 </div>
 
 <script type="module">
-import { firebaseConfig } from './firebase-config.js';
+let firebaseConfig = null;
+try {
+  ({ firebaseConfig } = await import('./firebase-config.js'));
+} catch (err) {
+  console.warn('firebase-config.js não encontrado ou inválido:', err);
+}
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js';
 import {
   getFirestore, collection, doc, addDoc, setDoc, deleteDoc, onSnapshot, serverTimestamp
@@ -1179,6 +1186,7 @@ function showModal({ type, title, message, defaultValue = '', confirmLabel = 'OK
     const inputEl = document.getElementById('app-modal-input');
     const cancelBtn = document.getElementById('app-modal-cancel');
     const confirmBtn = document.getElementById('app-modal-confirm');
+    const prevFocus = document.activeElement;
 
     if (title) { titleEl.textContent = title; titleEl.style.display = 'block'; }
     else { titleEl.style.display = 'none'; }
@@ -1199,6 +1207,7 @@ function showModal({ type, title, message, defaultValue = '', confirmLabel = 'OK
       cancelBtn.removeEventListener('click', onCancel);
       overlay.removeEventListener('mousedown', onOverlayClick);
       document.removeEventListener('keydown', onKeydown);
+      if (prevFocus && prevFocus.focus) { try { prevFocus.focus(); } catch (err) { /* ignora */ } }
       resolve(result);
     }
     function onConfirm() {
@@ -1212,8 +1221,18 @@ function showModal({ type, title, message, defaultValue = '', confirmLabel = 'OK
       if (e.target === overlay) onCancel();
     }
     function onKeydown(e) {
-      if (e.key === 'Escape') onCancel();
-      else if (e.key === 'Enter') { e.preventDefault(); onConfirm(); }
+      if (e.key === 'Escape') { e.preventDefault(); onCancel(); }
+      else if (e.key === 'Enter') {
+        if (document.activeElement === cancelBtn) return; // Enter no "Cancelar" aciona o próprio botão
+        e.preventDefault(); onConfirm();
+      } else if (e.key === 'Tab') {
+        // mantém o foco dentro do modal
+        const focusables = [...overlay.querySelectorAll('button, input')].filter(el => el.offsetParent !== null && !el.disabled);
+        if (!focusables.length) return;
+        const first = focusables[0], last = focusables[focusables.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
     }
 
     confirmBtn.addEventListener('click', onConfirm);
@@ -1236,6 +1255,16 @@ function appConfirm(message, opts = {}) {
 function appPrompt(message, defaultValue = '', opts = {}) {
   return showModal({ type: 'prompt', message, defaultValue, confirmLabel: opts.confirmLabel || 'OK', cancelLabel: opts.cancelLabel || 'Cancelar', title: opts.title });
 }
+
+window.addEventListener('unhandledrejection', (e) => {
+  const code = e.reason && e.reason.code;
+  if (code !== 'permission-denied' && code !== 'unavailable') return;
+  e.preventDefault();
+  if (document.body.classList.contains('modal-open')) return;
+  appAlert(code === 'permission-denied'
+    ? 'Sem permissão para salvar. Entre como professor(a) e tente novamente.'
+    : 'Sem conexão com o servidor. Verifique a internet e tente novamente.');
+});
 
 /* ---------- tela de carregamento inicial ---------- */
 function hideBootLoader() {
@@ -1299,7 +1328,10 @@ let presentState = 'intro'; // 'intro' | 'question' | 'end' | 'gabarito'
 let presentTimerId = null;
 let presentRemaining = 0;
 let presentTotal = 0;
-let firstLoad = true;
+let serverSynced = false;       // true quando o snapshot veio do servidor (não do cache local)
+let creatingDefaultTest = false;
+let authResolved = false;       // true depois que o Firebase Auth informou se há sessão de professor
+let lastPresentSig = null;      // assinatura do que está desenhado na apresentação
 
 function setSyncStatus(state, text) {
   const el = document.getElementById('sync-status');
@@ -1312,6 +1344,7 @@ const urlTestId = new URLSearchParams(location.search).get('teste');
 let autoStartHandled = false;
 function tryAutoStartFromLink() {
   if (autoStartHandled || !urlTestId) return;
+  if (!authResolved) return; // ainda não sabemos se há professor logado
   if (auth.currentUser) return; // não interfere com uma sessão de professor já logada
   const test = tests.find(t => t.id === urlTestId);
   if (!test) return; // dados ainda não chegaram, ou o id do link é inválido
@@ -1325,25 +1358,36 @@ function tryAutoStartFromLink() {
   }
 }
 
-onSnapshot(testsCol, async (snapshot) => {
-  tests = snapshot.docs.map(d => ({ id: d.id, name: d.data().name || 'Sem nome', questions: d.data().questions || [] }));
-
-  if (tests.length === 0 && firstLoad) {
-    firstLoad = false;
+// cria o primeiro teste só se o SERVIDOR confirmou que não há nenhum e há professor logado
+// (offline o snapshot vem vazio do cache, e criar aqui duplicaria "Teste 1" ao reconectar)
+async function ensureDefaultTest() {
+  if (creatingDefaultTest || !serverSynced || tests.length > 0 || !auth.currentUser) return;
+  creatingDefaultTest = true;
+  try {
     await addDoc(testsCol, { name: 'Teste 1', questions: [], createdAt: serverTimestamp() });
-    return; // o próprio onSnapshot dispara de novo com o novo teste
+  } catch (err) {
+    console.warn('Não foi possível criar o teste inicial:', err);
+  } finally {
+    creatingDefaultTest = false;
   }
-  firstLoad = false;
+}
+
+onSnapshot(testsCol, (snapshot) => {
+  tests = snapshot.docs.map(d => ({ id: d.id, name: d.data().name || 'Sem nome', questions: d.data().questions || [] }));
+  serverSynced = !snapshot.metadata.fromCache;
 
   if (!currentTestId || !tests.find(t => t.id === currentTestId)) {
     currentTestId = tests[0] ? tests[0].id : null;
   }
-  setSyncStatus('online', 'Sincronizado com o Firebase');
+  if (snapshot.metadata.fromCache) setSyncStatus('error', 'Offline — sem conexão com o Firebase');
+  else setSyncStatus('online', 'Sincronizado com o Firebase');
   renderTestSelect();
   renderQList();
-  renderPresent();
+  // só redesenha a apresentação se o que está na tela realmente mudou (não reinicia o timer à toa)
+  if (presentSignature(getCurrentTest()) !== lastPresentSig) renderPresent();
   renderStudentPicker();
   tryAutoStartFromLink();
+  ensureDefaultTest();
 }, (err) => {
   console.error(err);
   setSyncStatus('error', 'Erro de conexão — veja o console');
@@ -1357,9 +1401,13 @@ function persistCurrentTestId() {
   if (currentTestId) localStorage.setItem('mathquiz_current_test', currentTestId);
 }
 
+let typesetChain = Promise.resolve();
 function typeset(container) {
   if (window.MathJax && window.MathJax.typesetPromise) {
-    MathJax.typesetPromise(container ? [container] : undefined);
+    // encadeia as chamadas: o MathJax não deve compor duas vezes ao mesmo tempo
+    typesetChain = typesetChain
+      .then(() => MathJax.typesetPromise(container ? [container] : undefined))
+      .catch((err) => console.warn('MathJax:', err));
   }
 }
 
@@ -1500,6 +1548,7 @@ function openImageLightbox(src, alt, caption) {
     }
     img.style.visibility = '';
   });
+  img.addEventListener('error', closeImageLightbox);
   img.src = src;
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
@@ -1535,6 +1584,7 @@ document.addEventListener('keydown', (e) => {
 
 document.addEventListener('keydown', (e) => {
   if (document.getElementById('img-lightbox')) return;
+  if (document.body.classList.contains('modal-open')) return;
   const tag = (document.activeElement && document.activeElement.tagName) || '';
   if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
   const apresentacaoActive = document.getElementById('view-apresentacao') &&
@@ -1552,7 +1602,10 @@ function enterImmersive() {
   // melhor esforço: tenta também a Fullscreen API nativa para esconder a barra do navegador
   const requestFS = stage.requestFullscreen || stage.webkitRequestFullscreen;
   if (requestFS && !document.fullscreenElement && !document.webkitFullscreenElement) {
-    requestFS.call(stage).catch(() => {});
+    try {
+      const r = requestFS.call(stage);
+      if (r && r.catch) r.catch(() => {});
+    } catch (err) { /* segue sem tela cheia nativa */ }
   }
 }
 
@@ -1562,7 +1615,10 @@ function exitImmersive() {
   document.body.classList.remove('stage-immersive-lock');
   const exitFS = document.exitFullscreen || document.webkitExitFullscreen;
   if ((document.fullscreenElement || document.webkitFullscreenElement) && exitFS) {
-    exitFS.call(document).catch(() => {});
+    try {
+      const r = exitFS.call(document);
+      if (r && r.catch) r.catch(() => {});
+    } catch (err) { /* ignora */ }
   }
 }
 
@@ -1593,7 +1649,7 @@ function buildAltRows(existing) {
   altLetters.forEach((letter, i) => {
     const row = document.createElement('div');
     row.className = 'alt-row';
-    const val = existing && existing.options[i] ? existing.options[i].text : '';
+    const val = existing && existing.options && existing.options[i] ? existing.options[i].text : '';
     const checked = existing && existing.correct === letter ? 'checked' : '';
     row.innerHTML = `
       <input type="radio" name="correct-alt" id="radio-${letter}" value="${letter}" ${checked}>
@@ -1611,7 +1667,11 @@ function syncDiscursiveUI() {
 }
 document.getElementById('q-discursive').addEventListener('change', syncDiscursiveUI);
 
-function escapeAttr(s) { return (s || '').replace(/"/g, '&quot;'); }
+function escapeAttr(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
 function shuffleArray(arr) {
   const a = [...arr];
   for (let i = a.length - 1; i > 0; i--) {
@@ -1621,17 +1681,26 @@ function shuffleArray(arr) {
   return a;
 }
 function escapeHtml(s) {
-  return (s || '').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 }
 function autoLatex(s) {
   if (!s) return s;
-  if (s.includes('$')) return s; // usuário já delimitou manualmente com $...$
+  // "R$ 10" vira "R\$ 10" para o MathJax não tratar o cifrão da moeda como delimitador de fórmula
+  s = s.replace(/(^|[^\\])R\$(?=\s*\d)/g, (m, p) => p + 'R\\$');
+  if (/(^|[^\\])\$/.test(s)) return s; // usuário já delimitou manualmente com $...$
 
   // só entra em ação se houver algo que pareça matemática (comando LaTeX, expoente ou índice)
   if (!/\\[a-zA-Z]+|\^|_/.test(s)) return s;
 
   const parts = s.split(/(\s+)/); // alterna: palavra, espaço, palavra, espaço...
-  const isMathWord = (w) => /\\[a-zA-Z]|[\^_]/.test(w) || /^[-+*/=().\d]+$/.test(w);
+  const isMathWord = (w) => {
+    const core = w.replace(/[,;:!?]+$/, ''); // pontuação final não impede de reconhecer a fórmula
+    if (!core) return false;
+    return /\\[a-zA-Z]|[\^_]/.test(core)
+      || /^[-+*/=().\d·×÷−]+$/.test(core)
+      || /^\d+[a-zA-Z]$/.test(core)                          // 2x, 3y
+      || /^[a-zA-Z0-9().]*[+*=][a-zA-Z0-9+*=().-]*$/.test(core); // x+1, 2x=4
+  };
 
   let out = '';
   let i = 0;
@@ -1646,7 +1715,11 @@ function autoLatex(s) {
         group += parts[j] + parts[j + 1];
         j += 2;
       }
-      out += '$' + group + '$';
+      // pontuação do fim da frase fica fora da fórmula
+      const m = group.match(/^([\s\S]*?)([,.;:!?]+)$/);
+      if (m && m[1].trim()) out += '$' + m[1].trimEnd() + '$' + m[1].slice(m[1].trimEnd().length) + m[2];
+      else if (m) out += group; // só pontuação (ex.: "..."): não é fórmula
+      else out += '$' + group + '$';
       i = j;
     } else {
       out += part;
@@ -1666,10 +1739,26 @@ let pendingImageFile = null;
 let pendingImageRemoved = false;
 let pendingSolutionFile = null;
 let pendingSolutionRemoved = false;
+let savingQuestion = false;
+
+function validateImageFile(file, input) {
+  if (!file.type || !file.type.startsWith('image/')) {
+    appAlert('Escolha um arquivo de imagem (PNG, JPG, etc.).');
+    input.value = '';
+    return false;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    appAlert('A imagem é muito grande (máximo de 10 MB).');
+    input.value = '';
+    return false;
+  }
+  return true;
+}
 
 document.getElementById('q-image-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!validateImageFile(file, e.target)) return;
   pendingImageFile = file;
   pendingImageRemoved = false;
   const previewImg = document.getElementById('q-image-preview');
@@ -1681,6 +1770,7 @@ document.getElementById('q-image-input').addEventListener('change', (e) => {
 document.getElementById('q-solution-input').addEventListener('change', (e) => {
   const file = e.target.files[0];
   if (!file) return;
+  if (!validateImageFile(file, e.target)) return;
   pendingSolutionFile = file;
   pendingSolutionRemoved = false;
   document.getElementById('q-solution-preview').src = URL.createObjectURL(file);
@@ -1730,58 +1820,59 @@ document.getElementById('btn-save-q').addEventListener('click', async () => {
 
   const existing = editingId ? test.questions.find(q => q.id === editingId) : null;
   let imageUrl = existing ? (existing.imageUrl || null) : null;
+  let solutionUrl = existing ? (existing.solutionUrl || null) : null;
 
   const statusEl = document.getElementById('q-image-status');
+  const solStatusEl = document.getElementById('q-solution-status');
   const saveBtn = document.getElementById('btn-save-q');
 
-  if (pendingImageFile) {
-    saveBtn.disabled = true;
-    statusEl.textContent = 'Enviando imagem…';
+  if (savingQuestion) return; // evita salvar duas vezes com clique duplo
+  savingQuestion = true;
+  saveBtn.disabled = true;
+
+  try {
     try {
-      const uploaded = await uploadImageToCloudinary(pendingImageFile);
-      imageUrl = uploaded.url;
+      if (pendingImageFile) {
+        statusEl.textContent = 'Enviando imagem…';
+        imageUrl = (await uploadImageToCloudinary(pendingImageFile)).url;
+      } else if (pendingImageRemoved) {
+        imageUrl = null;
+      }
     } catch (err) {
-      saveBtn.disabled = false;
-      statusEl.textContent = '';
       await appAlert('Não foi possível enviar a imagem. Verifique sua conexão e tente novamente.');
       return;
     }
-  } else if (pendingImageRemoved) {
-    imageUrl = null;
-  }
 
-  let solutionUrl = existing ? (existing.solutionUrl || null) : null;
-  const solStatusEl = document.getElementById('q-solution-status');
-  if (pendingSolutionFile) {
-    saveBtn.disabled = true;
-    solStatusEl.textContent = 'Enviando imagem da demonstração…';
     try {
-      const uploadedSol = await uploadImageToCloudinary(pendingSolutionFile);
-      solutionUrl = uploadedSol.url;
+      if (pendingSolutionFile) {
+        solStatusEl.textContent = 'Enviando imagem da demonstração…';
+        solutionUrl = (await uploadImageToCloudinary(pendingSolutionFile)).url;
+      } else if (pendingSolutionRemoved) {
+        solutionUrl = null;
+      }
     } catch (err) {
-      saveBtn.disabled = false;
-      statusEl.textContent = '';
-      solStatusEl.textContent = '';
       await appAlert('Não foi possível enviar a imagem da demonstração. Verifique sua conexão e tente novamente.');
       return;
     }
-  } else if (pendingSolutionRemoved) {
-    solutionUrl = null;
+
+    let newQuestions;
+    if (editingId) {
+      newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct, discursive, timeLimit, imageUrl, solutionUrl } : q);
+    } else {
+      newQuestions = [...test.questions, { id: Date.now(), text, options, correct, discursive, timeLimit, imageUrl, solutionUrl }];
+    }
+
+    await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
+    resetEditor();
+  } catch (err) {
+    console.error(err);
+    await appAlert('Não foi possível salvar a questão. Verifique a conexão e se você está logado como professor(a).');
+  } finally {
+    savingQuestion = false;
+    saveBtn.disabled = false;
+    statusEl.textContent = '';
+    solStatusEl.textContent = '';
   }
-
-  let newQuestions;
-  if (editingId) {
-    newQuestions = test.questions.map(q => q.id === editingId ? { id: q.id, text, options, correct, discursive, timeLimit, imageUrl, solutionUrl } : q);
-  } else {
-    newQuestions = [...test.questions, { id: Date.now(), text, options, correct, discursive, timeLimit, imageUrl, solutionUrl }];
-  }
-
-  await setDoc(doc(db, 'tests', test.id), { questions: newQuestions }, { merge: true });
-
-  saveBtn.disabled = false;
-  statusEl.textContent = '';
-  solStatusEl.textContent = '';
-  resetEditor();
 });
 
 document.getElementById('btn-cancel-edit').addEventListener('click', resetEditor);
@@ -1983,8 +2074,25 @@ document.getElementById('present-shuffle').addEventListener('change', () => {
   if (presentState === 'question') renderPresent();
 });
 
+// resumo do que a apresentação está mostrando; o snapshot só redesenha se isso mudar
+function presentSignature(test) {
+  if (!test) return 'sem-teste';
+  const base = presentState + '|' + test.name + '|' + test.questions.length;
+  if (presentState === 'question') return base + '|' + presentIndex + '|' + JSON.stringify(test.questions[presentIndex] || null);
+  if (presentState === 'gabarito') return base + '|' + JSON.stringify(test.questions);
+  return base;
+}
+
 function renderPresent() {
+  const viewEl = document.getElementById('view-apresentacao');
+  if (viewEl && !viewEl.classList.contains('active')) {
+    // aba oculta: não desenha nem deixa o timer rodando em segundo plano
+    clearPresentTimer();
+    lastPresentSig = null;
+    return;
+  }
   const test = getCurrentTest();
+  lastPresentSig = presentSignature(test);
   const empty = document.getElementById('present-empty');
   const body = document.getElementById('present-body');
   clearPresentTimer();
@@ -2139,7 +2247,7 @@ function buildSheet() {
   }
   const title = document.getElementById('sheet-title').value || test.name;
   const meta = document.getElementById('sheet-meta').value || '';
-  const copies = Math.max(1, parseInt(document.getElementById('sheet-copies').value) || 1);
+  const copies = Math.min(200, Math.max(1, parseInt(document.getElementById('sheet-copies').value) || 1));
   const altCount = Math.min(6, Math.max(2, parseInt(document.getElementById('sheet-altcount').value) || 5));
   const allSheetLetters = ['A', 'B', 'C', 'D', 'E', 'F'];
   const letters = allSheetLetters.slice(0, altCount);
@@ -2243,7 +2351,12 @@ async function tryTeacherLogin() {
     await signInWithEmailAndPassword(auth, TEACHER_EMAIL, val);
     // onAuthStateChanged cuida de mostrar a área do professor
   } catch (err) {
-    errorEl.textContent = 'Senha incorreta. Tente novamente.';
+    const code = (err && err.code) || '';
+    let msg = 'Senha incorreta. Tente novamente.';
+    if (code === 'auth/network-request-failed') msg = 'Sem conexão com a internet. Tente novamente.';
+    else if (code === 'auth/too-many-requests') msg = 'Muitas tentativas seguidas. Aguarde alguns minutos e tente de novo.';
+    else if (code === 'auth/user-disabled') msg = 'Esta conta está desativada no Firebase.';
+    errorEl.textContent = msg;
     errorEl.style.display = 'block';
     document.getElementById('role-teacher-password').value = '';
     document.getElementById('role-teacher-password').focus();
@@ -2372,7 +2485,7 @@ function renderStudentQuestion() {
         </button>
       `).join('')}
     </div>
-    <div class="student-feedback" id="student-feedback"></div>
+    <div class="student-feedback" id="student-feedback" aria-live="polite"></div>
   `;
   typeset(stage);
 
@@ -2412,6 +2525,7 @@ function renderStudentQuestion() {
    Isso acontece de forma assíncrona (onAuthStateChanged), então a rota inicial
    é definida ali, não aqui. */
 onAuthStateChanged(auth, (user) => {
+  authResolved = true;
   if (!autoStartHandled) {
     if (user) {
       showRole('teacher');
@@ -2422,6 +2536,7 @@ onAuthStateChanged(auth, (user) => {
     }
   }
   tryAutoStartFromLink();
+  ensureDefaultTest();
   hideBootLoader();
 });
 
